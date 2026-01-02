@@ -6,7 +6,7 @@ require (
 	github.com/DonRobo/go-shelly-lite v0.0.0-20250727152441-e9b3a01aacb1
 	github.com/hashicorp/terraform-plugin-framework v1.15.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.18.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	resty.dev/v3 v3.0.0-beta.6
 )
 
