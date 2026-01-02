@@ -8,7 +8,6 @@ on:
 jobs:
   repo-sync:
     runs-on: ubuntu-latest
-    # https://docs.github.com/en/actions/using-jobs/assigning-permissions-to-jobs
     permissions:
       contents: write
       pull-requests: write
@@ -16,9 +15,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.CUSTOM_GITHUB_PAT }}
+          persist-credentials: false
 
       - name: actions-template-sync
         uses: AndreasAugustin/actions-template-sync@v2
         with:
+          source_gh_token: ${{ CUSTOM_GITHUB_PAT }}
           source_repo_path: hashicorp/terraform-provider-scaffolding-framework
           upstream_branch: main
