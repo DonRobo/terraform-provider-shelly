@@ -22,6 +22,6 @@ jobs:
       - name: actions-template-sync
         uses: AndreasAugustin/actions-template-sync@v2
         with:
-          source_gh_token: ${{ CUSTOM_GITHUB_PAT }}
+          source_gh_token: ${{ secrets.CUSTOM_GITHUB_PAT }}
           source_repo_path: hashicorp/terraform-provider-scaffolding-framework
           upstream_branch: main
