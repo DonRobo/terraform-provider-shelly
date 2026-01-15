@@ -2,7 +2,7 @@ module terraform-provider-shelly-provider
 
 go 1.24.0
 
-toolchain go1.25.5
+toolchain go1.25.6
 
 require (
 	github.com/DonRobo/go-shelly-lite v0.0.0-20250727152441-e9b3a01aacb1
