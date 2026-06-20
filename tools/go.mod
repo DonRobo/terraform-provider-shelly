@@ -5,7 +5,7 @@ go 1.25.8
 toolchain go1.26.4
 
 require (
-	github.com/hashicorp/copywrite v0.22.0
+	github.com/hashicorp/copywrite v0.25.3
 	github.com/hashicorp/terraform-plugin-docs v0.25.0
 )
 
