@@ -1,5 +1,7 @@
 github.com/DonRobo/go-shelly-lite v0.0.0-20250727152441-e9b3a01aacb1 h1:kRibK0yVLAM2e1bCRrfmOVuLaAL+0oYRSyz1OsPKce8=
 github.com/DonRobo/go-shelly-lite v0.0.0-20250727152441-e9b3a01aacb1/go.mod h1:prR+bsqfuqAyLqSxk/b2UUR9VSNVuY4BqMRGW4CeCIo=
+github.com/DonRobo/go-shelly-lite v0.0.0-20260620220026-c062333ee749 h1:tO85+3LiYnfTcbQSOUCeR/64wBn8UAlkeAo03QlEaeM=
+github.com/DonRobo/go-shelly-lite v0.0.0-20260620220026-c062333ee749/go.mod h1:a+yLSRdwRNf3EzVqtFgOkykceudttFAwEQib9TPV8dM=
 github.com/bufbuild/protocompile v0.14.1 h1:iA73zAf/fyljNjQKwYzUHD6AD4R8KMasmwa/FBatYVw=
 github.com/bufbuild/protocompile v0.14.1/go.mod h1:ppVdAIhbr2H8asPk6k4pY7t9zB1OU5DoEw9xY/FUi1c=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
