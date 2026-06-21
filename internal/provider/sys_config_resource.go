@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -25,8 +26,9 @@ func NewSysConfigResource() resource.Resource {
 }
 
 type sysConfigResourceModel struct {
-	IP   types.String `tfsdk:"ip"`
-	Name types.String `tfsdk:"name"`
+	IP      types.String `tfsdk:"ip"`
+	Name    types.String `tfsdk:"name"`
+	EcoMode types.Bool   `tfsdk:"eco_mode"`
 }
 
 type sysConfigResource struct {
@@ -49,6 +51,14 @@ func (c *sysConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				MarkdownDescription: "The name of the Shelly device.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"eco_mode": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Eco mode (experimental) decreases power consumption when enabled, at the cost of reduced execution speed and increased network latency.",
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
@@ -81,6 +91,8 @@ func (c *sysConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 		state.Name = types.StringValue(*statusResp.Device.Name)
 	}
 
+	state.EcoMode = types.BoolValue(statusResp.Device.EcoMode)
+
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -94,6 +106,7 @@ func setSysConfig(plan sysConfigResourceModel, diags *diag.Diagnostics) error {
 		nameStr := plan.Name.ValueString()
 		sysConfig.Name = &nameStr
 	}
+	sysConfig.EcoMode = plan.EcoMode.ValueBool()
 
 	statusReq := &shelly.SysSetConfigRequest{
 		Config: shelly.SysConfig{
