@@ -28,4 +28,5 @@ resource "shelly_sys_config" "example" {
 
 ### Optional
 
+- `eco_mode` (Boolean) Eco mode (experimental) decreases power consumption when enabled, at the cost of reduced execution speed and increased network latency.
 - `name` (String) The name of the Shelly device.

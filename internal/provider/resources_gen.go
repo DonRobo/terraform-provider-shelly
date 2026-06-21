@@ -34,6 +34,7 @@ func generatedConfigResources() []func() resource.Resource {
 		NewSerialConfigResource,
 		NewSmokeConfigResource,
 		NewTemperatureConfigResource,
+		NewUiConfigResource,
 		NewVoltmeterConfigResource,
 		NewWsConfigResource,
 		NewZigbeeConfigResource,
