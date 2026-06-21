@@ -4,7 +4,7 @@ package provider
 
 import (
 	"context"
-	"github.com/DonRobo/go-shelly-lite"
+	"github.com/DonRobo/shelly-go"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"

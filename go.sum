@@ -1,5 +1,5 @@
-github.com/DonRobo/go-shelly-lite v0.0.0-20260621085622-aff896203dce h1:ogwLUHhWzoQFdwOCQsQFIp87nfwNy/v2XSbJ8DHbMpU=
-github.com/DonRobo/go-shelly-lite v0.0.0-20260621085622-aff896203dce/go.mod h1:a+yLSRdwRNf3EzVqtFgOkykceudttFAwEQib9TPV8dM=
+github.com/DonRobo/shelly-go v0.0.0-20260621181148-fbb778565ac7 h1:EamD6mZVT4etcL6i7YnRadl6qwuTWwuZNRtoxuUujOw=
+github.com/DonRobo/shelly-go v0.0.0-20260621181148-fbb778565ac7/go.mod h1:RN1sX+/X8foe8AVeOEt0TWujIoREl0vhsHnOQSQqCp8=
 github.com/bufbuild/protocompile v0.14.1 h1:iA73zAf/fyljNjQKwYzUHD6AD4R8KMasmwa/FBatYVw=
 github.com/bufbuild/protocompile v0.14.1/go.mod h1:ppVdAIhbr2H8asPk6k4pY7t9zB1OU5DoEw9xY/FUi1c=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

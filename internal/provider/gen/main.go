@@ -1,4 +1,4 @@
-// Command gen emits Terraform resources from the go-shelly-lite IR.
+// Command gen emits Terraform resources from the shelly-go IR.
 //
 // For every Shelly component that has a generated library config (so its Go
 // field names match the IR) and a SetConfig method, it writes a
@@ -19,7 +19,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DonRobo/go-shelly-lite/gen"
+	"github.com/DonRobo/shelly-go/gen"
 )
 
 const outDir = "internal/provider"
@@ -126,7 +126,7 @@ func emitResource(c *gen.Component, fields []scalarField) ([]byte, error) {
 
 	imp := newImports(
 		"context",
-		"github.com/DonRobo/go-shelly-lite",
+		"github.com/DonRobo/shelly-go",
 		"github.com/hashicorp/terraform-plugin-framework/diag",
 		"github.com/hashicorp/terraform-plugin-framework/path",
 		"github.com/hashicorp/terraform-plugin-framework/resource",
@@ -338,9 +338,9 @@ func removeGenerated(dir string) error {
 }
 
 func libraryDir() (string, error) {
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/DonRobo/go-shelly-lite").Output()
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/DonRobo/shelly-go").Output()
 	if err != nil {
-		return "", fmt.Errorf("locate go-shelly-lite: %w", err)
+		return "", fmt.Errorf("locate shelly-go: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
