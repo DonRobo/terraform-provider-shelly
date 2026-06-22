@@ -22,5 +22,15 @@ description: |-
 
 ### Optional
 
+- `alarms` (Attributes) (see [below for nested schema](#nestedatt--alarms))
 - `name` (String) Name of the PM1 instance
 - `reverse` (Boolean) Reverse measurement direction of active power and energy for the PM1 component. setting the reverse option requires restart
+
+<a id="nestedatt--alarms"></a>
+### Nested Schema for `alarms`
+
+Optional:
+
+- `current` (List of Number) ['under','over'] thresholds
+- `power` (List of Number) ['under','over'] thresholds
+- `voltage` (List of Number) ['under','over'] thresholds

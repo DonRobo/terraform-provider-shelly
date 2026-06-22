@@ -182,80 +182,87 @@ func (r *switchConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 	}
 }
 
+func (r *switchConfigResource) get(ctx context.Context, m *switchConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.SwitchGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.InMode != nil {
+		m.InMode = types.StringValue(*got.InMode)
+	}
+	if got.InLocked != nil {
+		m.InLocked = types.BoolValue(*got.InLocked)
+	}
+	if got.InitialState != nil {
+		m.InitialState = types.StringValue(*got.InitialState)
+	}
+	if got.AutoOn != nil {
+		m.AutoOn = types.BoolValue(*got.AutoOn)
+	}
+	if got.AutoOnDelay != nil {
+		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	}
+	if got.AutoOff != nil {
+		m.AutoOff = types.BoolValue(*got.AutoOff)
+	}
+	if got.AutoOffDelay != nil {
+		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	}
+	if got.AutorecoverVoltageErrors != nil {
+		m.AutorecoverVoltageErrors = types.BoolValue(*got.AutorecoverVoltageErrors)
+	}
+	if got.InputID != nil {
+		m.InputID = types.Float64Value(*got.InputID)
+	}
+	if got.PowerLimit != nil {
+		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	}
+	if got.VoltageLimit != nil {
+		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	}
+	if got.UndervoltageLimit != nil {
+		m.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
+	}
+	if got.CurrentLimit != nil {
+		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	}
+	if got.Reverse != nil {
+		m.Reverse = types.BoolValue(*got.Reverse)
+	}
+	if got.Counts != nil {
+		if m.Counts == nil {
+			m.Counts = &switchConfigCountsModel{}
+		}
+		if got.Counts.Enable != nil {
+			m.Counts.Enable = types.BoolValue(*got.Counts.Enable)
+		}
+		if got.Counts.PowerThr != nil {
+			m.Counts.PowerThr = types.Float64Value(*got.Counts.PowerThr)
+		}
+	}
+}
+
 func (r *switchConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state switchConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.SwitchGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.InMode != nil {
-		state.InMode = types.StringValue(*got.InMode)
-	}
-	if got.InLocked != nil {
-		state.InLocked = types.BoolValue(*got.InLocked)
-	}
-	if got.InitialState != nil {
-		state.InitialState = types.StringValue(*got.InitialState)
-	}
-	if got.AutoOn != nil {
-		state.AutoOn = types.BoolValue(*got.AutoOn)
-	}
-	if got.AutoOnDelay != nil {
-		state.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
-	}
-	if got.AutoOff != nil {
-		state.AutoOff = types.BoolValue(*got.AutoOff)
-	}
-	if got.AutoOffDelay != nil {
-		state.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
-	}
-	if got.AutorecoverVoltageErrors != nil {
-		state.AutorecoverVoltageErrors = types.BoolValue(*got.AutorecoverVoltageErrors)
-	}
-	if got.InputID != nil {
-		state.InputID = types.Float64Value(*got.InputID)
-	}
-	if got.PowerLimit != nil {
-		state.PowerLimit = types.Float64Value(*got.PowerLimit)
-	}
-	if got.VoltageLimit != nil {
-		state.VoltageLimit = types.Float64Value(*got.VoltageLimit)
-	}
-	if got.UndervoltageLimit != nil {
-		state.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
-	}
-	if got.CurrentLimit != nil {
-		state.CurrentLimit = types.Float64Value(*got.CurrentLimit)
-	}
-	if got.Reverse != nil {
-		state.Reverse = types.BoolValue(*got.Reverse)
-	}
-	if got.Counts != nil {
-		if state.Counts == nil {
-			state.Counts = &switchConfigCountsModel{}
-		}
-		if got.Counts.Enable != nil {
-			state.Counts.Enable = types.BoolValue(*got.Counts.Enable)
-		}
-		if got.Counts.PowerThr != nil {
-			state.Counts.PowerThr = types.Float64Value(*got.Counts.PowerThr)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *switchConfigResource) apply(plan switchConfigResourceModel, diags *diag.Diagnostics) {
+func (r *switchConfigResource) apply(ctx context.Context, plan switchConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.SwitchConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -343,7 +350,11 @@ func (r *switchConfigResource) Create(ctx context.Context, req resource.CreateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -356,7 +367,11 @@ func (r *switchConfigResource) Update(ctx context.Context, req resource.UpdateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

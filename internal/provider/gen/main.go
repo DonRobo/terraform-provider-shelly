@@ -87,17 +87,18 @@ func (n *tnode) child(seg string) *tnode {
 
 func (n *tnode) leaf() bool { return n.field != nil }
 
-// buildTree builds the config tree from a component's fields, keeping only scalar
-// leaves (string/number/integer/boolean) and dropping the identity keys, arrays
-// and opaque objects. Intermediate objects appear via the dotted key segments.
+// buildTree builds the config tree from a component's fields, keeping the
+// representable leaves (scalars and arrays of scalars) and dropping the identity
+// keys and opaque objects. Intermediate objects appear via the dotted key
+// segments.
 func buildTree(c *gen.Component) *tnode {
 	root := newTnode("")
 	for _, f := range c.Fields {
 		if f.Key == "id" || f.Key == "ip" {
 			continue
 		}
-		if !scalar(f.Type) {
-			continue // array / object-leaf / unknown — not representable yet
+		if !representable(f) {
+			continue // opaque object / typeless array — not representable
 		}
 		cur := root
 		segs := strings.Split(f.Key, ".")
@@ -117,6 +118,49 @@ func scalar(t string) bool {
 		return true
 	}
 	return false
+}
+
+// representable reports whether a leaf field can be exposed as a Terraform
+// attribute: a scalar, or an array whose element type the docs name.
+func representable(f *gen.Field) bool {
+	if scalar(f.Type) {
+		return true
+	}
+	_, _, ok := arrayInfo(f.Elem)
+	return f.Type == "array" && ok
+}
+
+// arrayInfo maps an array element base type to its Terraform element type and the
+// library's Go slice type. ok is false for arrays whose element type the docs
+// don't specify (the library leaves those as json.RawMessage; we skip them).
+func arrayInfo(elem string) (tfElemType, goSlice string, ok bool) {
+	switch elem {
+	case "number":
+		return "types.Float64Type", "[]float64", true
+	case "integer":
+		return "types.Int64Type", "[]int", true
+	case "string":
+		return "types.StringType", "[]string", true
+	case "boolean":
+		return "types.BoolType", "[]bool", true
+	}
+	return "", "", false
+}
+
+// readOnly reports whether a field is documented as read-only (its description
+// starts with "Read-only"). Such fields are Computed-only: surfaced in state but
+// never sent to SetConfig. Fields that merely mention read-only mid-sentence with
+// caveats (e.g. enhanced_security) stay settable.
+func readOnly(f *gen.Field) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(f.Description)), "read-only")
+}
+
+// modelFieldType is the Terraform model field type for a leaf.
+func modelFieldType(f *gen.Field) string {
+	if f.Type == "array" {
+		return "types.List"
+	}
+	return info(f.Type).Model
 }
 
 // --- emission ----------------------------------------------------------------
@@ -234,7 +278,7 @@ func emitModelFields(b *strings.Builder, lower string, path []string, n *tnode) 
 		c := n.children[seg]
 		g := gen.GoName(seg)
 		if c.leaf() {
-			fmt.Fprintf(b, "\t%s %s `tfsdk:%q`\n", g, info(c.field.Type).Model, attrName(seg))
+			fmt.Fprintf(b, "\t%s %s `tfsdk:%q`\n", g, modelFieldType(c.field), attrName(seg))
 			continue
 		}
 		sub := childPath(path, seg)
@@ -264,9 +308,26 @@ func emitSchemaAttrs(b *strings.Builder, n *tnode, imp *imports) {
 			continue
 		}
 		f := c.field
+		ro := readOnly(f)
+
+		// availability is the Optional/Computed line: settable fields are both;
+		// read-only fields are Computed-only so plans never try to set them.
+		availability := "Optional: true,\nComputed: true,\n"
+		if ro {
+			availability = "Computed: true,\n"
+		}
+
+		if f.Type == "array" {
+			tfElem, _, _ := arrayInfo(f.Elem)
+			imp.add("github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier")
+			fmt.Fprintf(b, "%q: schema.ListAttribute{\nElementType: %s,\n%sMarkdownDescription: %q,\n", attrName(seg), tfElem, availability, f.Description)
+			b.WriteString("PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},\n},\n")
+			continue
+		}
+
 		ti := info(f.Type)
-		fmt.Fprintf(b, "%q: %s{\nOptional: true,\nComputed: true,\nMarkdownDescription: %q,\n", attrName(seg), ti.Attr, f.Description)
-		if f.Type == "string" && len(f.Enum) > 0 {
+		fmt.Fprintf(b, "%q: %s{\n%sMarkdownDescription: %q,\n", attrName(seg), ti.Attr, availability, f.Description)
+		if !ro && f.Type == "string" && len(f.Enum) > 0 {
 			imp.add("github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator",
 				"github.com/hashicorp/terraform-plugin-framework/schema/validator")
 			quoted := make([]string, len(f.Enum))
@@ -281,16 +342,25 @@ func emitSchemaAttrs(b *strings.Builder, n *tnode, imp *imports) {
 }
 
 func emitRead(b *strings.Builder, typeName, lower string, c *gen.Component, root *tnode) {
-	fmt.Fprintf(b, "func (r *%s) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {\n\tvar state %s\n", typeName, modelType(lower, nil))
-	b.WriteString("\tresp.Diagnostics.Append(req.State.Get(ctx, &state)...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
-	b.WriteString("\tclient := resty.New()\n\tdefer client.Close()\n\tclient.SetBaseURL(\"http://\" + state.IP.ValueString())\n")
+	model := modelType(lower, nil)
+
+	// get reads the live config into m. It is shared by Read and by Create/Update,
+	// which read back after applying so Computed values (read-only fields, server
+	// defaults) are known in state.
+	fmt.Fprintf(b, "func (r *%s) get(ctx context.Context, m *%s, diags *diag.Diagnostics) {\n", typeName, model)
+	b.WriteString("\tclient := resty.New()\n\tdefer client.Close()\n\tclient.SetBaseURL(\"http://\" + m.IP.ValueString())\n")
 	if c.Keyed {
-		fmt.Fprintf(b, "\tgot, _, err := (&components.%sGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)\n", c.Prefix())
+		fmt.Fprintf(b, "\tgot, _, err := (&components.%sGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)\n", c.Prefix())
 	} else {
 		fmt.Fprintf(b, "\tgot, _, err := (&components.%sGetConfigRequest{}).Do(client)\n", c.Prefix())
 	}
-	b.WriteString("\tif err != nil {\n\t\tresp.Diagnostics.AddError(\"Failed to read config\", err.Error())\n\t\treturn\n\t}\n")
-	emitReadNode(b, lower, "got", "state", nil, root)
+	b.WriteString("\tif err != nil {\n\t\tdiags.AddError(\"Failed to read config\", err.Error())\n\t\treturn\n\t}\n")
+	emitReadNode(b, lower, "got", "m", nil, root)
+	b.WriteString("}\n\n")
+
+	fmt.Fprintf(b, "func (r *%s) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {\n\tvar state %s\n", typeName, model)
+	b.WriteString("\tresp.Diagnostics.Append(req.State.Get(ctx, &state)...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
+	b.WriteString("\tr.get(ctx, &state, &resp.Diagnostics)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
 	b.WriteString("\tresp.Diagnostics.Append(resp.State.Set(ctx, &state)...)\n}\n\n")
 }
 
@@ -299,7 +369,13 @@ func emitReadNode(b *strings.Builder, lower, got, state string, path []string, n
 		c := n.children[seg]
 		g := gen.GoName(seg)
 		if c.leaf() {
-			fmt.Fprintf(b, "\tif %s.%s != nil {\n\t\t%s.%s = %s\n\t}\n", got, g, state, g, readConv(c.field.Type, got+"."+g))
+			f := c.field
+			if f.Type == "array" {
+				tfElem, _, _ := arrayInfo(f.Elem)
+				fmt.Fprintf(b, "\tif %s.%s != nil {\n\t\tl, d := types.ListValueFrom(ctx, %s, %s.%s)\n\t\tdiags.Append(d...)\n\t\t%s.%s = l\n\t}\n", got, g, tfElem, got, g, state, g)
+			} else {
+				fmt.Fprintf(b, "\tif %s.%s != nil {\n\t\t%s.%s = %s\n\t}\n", got, g, state, g, readConv(f.Type, got+"."+g))
+			}
 			continue
 		}
 		sub := childPath(path, seg)
@@ -312,7 +388,9 @@ func emitReadNode(b *strings.Builder, lower, got, state string, path []string, n
 }
 
 func emitWrite(b *strings.Builder, typeName, lower string, c *gen.Component, root *tnode) {
-	fmt.Fprintf(b, "func (r *%s) apply(plan %s, diags *diag.Diagnostics) {\n\tvar cfg components.%sConfig\n", typeName, modelType(lower, nil), c.Prefix())
+	model := modelType(lower, nil)
+
+	fmt.Fprintf(b, "func (r *%s) apply(ctx context.Context, plan %s, diags *diag.Diagnostics) {\n\tvar cfg components.%sConfig\n", typeName, model, c.Prefix())
 	if c.Keyed {
 		b.WriteString("\tcfg.ID = int(plan.ID.ValueInt64())\n")
 	}
@@ -326,9 +404,11 @@ func emitWrite(b *strings.Builder, typeName, lower string, c *gen.Component, roo
 	b.WriteString("\t\tdiags.AddError(\"Failed to set config\", err.Error())\n\t}\n}\n\n")
 
 	for _, op := range []string{"Create", "Update"} {
-		fmt.Fprintf(b, "func (r *%s) %s(ctx context.Context, req resource.%sRequest, resp *resource.%sResponse) {\n\tvar plan %s\n", typeName, op, op, op, modelType(lower, nil))
+		fmt.Fprintf(b, "func (r *%s) %s(ctx context.Context, req resource.%sRequest, resp *resource.%sResponse) {\n\tvar plan %s\n", typeName, op, op, op, model)
 		b.WriteString("\tresp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
-		b.WriteString("\tr.apply(plan, &resp.Diagnostics)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
+		b.WriteString("\tr.apply(ctx, plan, &resp.Diagnostics)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
+		// Read back so Computed values (read-only fields, server defaults) are known.
+		b.WriteString("\tr.get(ctx, &plan, &resp.Diagnostics)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
 		b.WriteString("\tresp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)\n}\n\n")
 	}
 }
@@ -338,7 +418,16 @@ func emitWriteNode(b *strings.Builder, prefix, cfg, plan string, path []string, 
 		c := n.children[seg]
 		g := gen.GoName(seg)
 		if c.leaf() {
-			fmt.Fprintf(b, "\tif !%s.%s.IsNull() && !%s.%s.IsUnknown() {\n\t\t%s\n\t}\n", plan, g, plan, g, setStmt(c.field.Type, cfg+"."+g, plan+"."+g))
+			f := c.field
+			if readOnly(f) {
+				continue // read-only: surfaced in state, never sent to SetConfig
+			}
+			if f.Type == "array" {
+				_, goSlice, _ := arrayInfo(f.Elem)
+				fmt.Fprintf(b, "\tif !%s.%s.IsNull() && !%s.%s.IsUnknown() {\n\t\tvar v %s\n\t\tdiags.Append(%s.%s.ElementsAs(ctx, &v, false)...)\n\t\t%s.%s = v\n\t}\n", plan, g, plan, g, goSlice, plan, g, cfg, g)
+				continue
+			}
+			fmt.Fprintf(b, "\tif !%s.%s.IsNull() && !%s.%s.IsUnknown() {\n\t\t%s\n\t}\n", plan, g, plan, g, setStmt(f.Type, cfg+"."+g, plan+"."+g))
 			continue
 		}
 		sub := childPath(path, seg)

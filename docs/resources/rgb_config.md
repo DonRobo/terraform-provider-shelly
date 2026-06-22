@@ -51,6 +51,7 @@ Optional:
 Optional:
 
 - `brightness` (Number) Brightness level (in percent) set on double click (if applicable). null overrides brightness with current brightness when preset is applied. Default 100
+- `rgb` (List of Number) Color level set on double click (if applicable). Red, Green, Blue [r,g,b] - each value represents level between 0..255. null overrides rgb array with current rgb array when preset is applied. Default value 255 for each color
 
 
 
@@ -59,5 +60,7 @@ Optional:
 
 Optional:
 
+- `active_between` (List of String) Containing 2 elements of type string, the first element indicates the start of the period during which the night mode will be active, the second indicates the end of that period. Both start and end are strings in the format HH:MM, where HH and MM are hours and minutes with optinal leading zeros
 - `brightness` (Number) Brightness level limit (in percent) when night mode is active. null overrides night_mode.brightness with current brightness when night mode starts. Default value 50.
 - `enable` (Boolean) Enable or disable night mode
+- `rgb` (List of Number) Color level when night mode is active. Red, Green, Blue [r,g,b] - each value represents level between 0..255. null overrides night_mode.rgb array with current rgb array when night mode starts. Default value 255 for each color

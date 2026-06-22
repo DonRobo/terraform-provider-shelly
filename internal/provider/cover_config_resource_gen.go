@@ -253,113 +253,120 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 	}
 }
 
+func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.CoverGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.InLocked != nil {
+		m.InLocked = types.BoolValue(*got.InLocked)
+	}
+	if got.InitialState != nil {
+		m.InitialState = types.StringValue(*got.InitialState)
+	}
+	if got.PowerLimit != nil {
+		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	}
+	if got.VoltageLimit != nil {
+		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	}
+	if got.UndervoltageLimit != nil {
+		m.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
+	}
+	if got.CurrentLimit != nil {
+		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	}
+	if got.Motor != nil {
+		if m.Motor == nil {
+			m.Motor = &coverConfigMotorModel{}
+		}
+		if got.Motor.IdlePowerThr != nil {
+			m.Motor.IdlePowerThr = types.Float64Value(*got.Motor.IdlePowerThr)
+		}
+		if got.Motor.IdleConfirmPeriod != nil {
+			m.Motor.IdleConfirmPeriod = types.Float64Value(*got.Motor.IdleConfirmPeriod)
+		}
+	}
+	if got.MaxtimeOpen != nil {
+		m.MaxtimeOpen = types.Float64Value(*got.MaxtimeOpen)
+	}
+	if got.MaxtimeClose != nil {
+		m.MaxtimeClose = types.Float64Value(*got.MaxtimeClose)
+	}
+	if got.ObstructionDetection != nil {
+		if m.ObstructionDetection == nil {
+			m.ObstructionDetection = &coverConfigObstructionDetectionModel{}
+		}
+		if got.ObstructionDetection.Enable != nil {
+			m.ObstructionDetection.Enable = types.BoolValue(*got.ObstructionDetection.Enable)
+		}
+		if got.ObstructionDetection.Direction != nil {
+			m.ObstructionDetection.Direction = types.StringValue(*got.ObstructionDetection.Direction)
+		}
+		if got.ObstructionDetection.PowerThr != nil {
+			m.ObstructionDetection.PowerThr = types.Float64Value(*got.ObstructionDetection.PowerThr)
+		}
+		if got.ObstructionDetection.Holdoff != nil {
+			m.ObstructionDetection.Holdoff = types.Float64Value(*got.ObstructionDetection.Holdoff)
+		}
+	}
+	if got.SafetySwitch != nil {
+		if m.SafetySwitch == nil {
+			m.SafetySwitch = &coverConfigSafetySwitchModel{}
+		}
+		if got.SafetySwitch.Enable != nil {
+			m.SafetySwitch.Enable = types.BoolValue(*got.SafetySwitch.Enable)
+		}
+		if got.SafetySwitch.Direction != nil {
+			m.SafetySwitch.Direction = types.StringValue(*got.SafetySwitch.Direction)
+		}
+	}
+	if got.Slat != nil {
+		if m.Slat == nil {
+			m.Slat = &coverConfigSlatModel{}
+		}
+		if got.Slat.Enable != nil {
+			m.Slat.Enable = types.BoolValue(*got.Slat.Enable)
+		}
+		if got.Slat.OpenTime != nil {
+			m.Slat.OpenTime = types.Float64Value(*got.Slat.OpenTime)
+		}
+		if got.Slat.CloseTime != nil {
+			m.Slat.CloseTime = types.Float64Value(*got.Slat.CloseTime)
+		}
+		if got.Slat.Step != nil {
+			m.Slat.Step = types.Float64Value(*got.Slat.Step)
+		}
+		if got.Slat.RetainPos != nil {
+			m.Slat.RetainPos = types.BoolValue(*got.Slat.RetainPos)
+		}
+		if got.Slat.PreciseCtl != nil {
+			m.Slat.PreciseCtl = types.BoolValue(*got.Slat.PreciseCtl)
+		}
+	}
+}
+
 func (r *coverConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state coverConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.CoverGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.InLocked != nil {
-		state.InLocked = types.BoolValue(*got.InLocked)
-	}
-	if got.InitialState != nil {
-		state.InitialState = types.StringValue(*got.InitialState)
-	}
-	if got.PowerLimit != nil {
-		state.PowerLimit = types.Float64Value(*got.PowerLimit)
-	}
-	if got.VoltageLimit != nil {
-		state.VoltageLimit = types.Float64Value(*got.VoltageLimit)
-	}
-	if got.UndervoltageLimit != nil {
-		state.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
-	}
-	if got.CurrentLimit != nil {
-		state.CurrentLimit = types.Float64Value(*got.CurrentLimit)
-	}
-	if got.Motor != nil {
-		if state.Motor == nil {
-			state.Motor = &coverConfigMotorModel{}
-		}
-		if got.Motor.IdlePowerThr != nil {
-			state.Motor.IdlePowerThr = types.Float64Value(*got.Motor.IdlePowerThr)
-		}
-		if got.Motor.IdleConfirmPeriod != nil {
-			state.Motor.IdleConfirmPeriod = types.Float64Value(*got.Motor.IdleConfirmPeriod)
-		}
-	}
-	if got.MaxtimeOpen != nil {
-		state.MaxtimeOpen = types.Float64Value(*got.MaxtimeOpen)
-	}
-	if got.MaxtimeClose != nil {
-		state.MaxtimeClose = types.Float64Value(*got.MaxtimeClose)
-	}
-	if got.ObstructionDetection != nil {
-		if state.ObstructionDetection == nil {
-			state.ObstructionDetection = &coverConfigObstructionDetectionModel{}
-		}
-		if got.ObstructionDetection.Enable != nil {
-			state.ObstructionDetection.Enable = types.BoolValue(*got.ObstructionDetection.Enable)
-		}
-		if got.ObstructionDetection.Direction != nil {
-			state.ObstructionDetection.Direction = types.StringValue(*got.ObstructionDetection.Direction)
-		}
-		if got.ObstructionDetection.PowerThr != nil {
-			state.ObstructionDetection.PowerThr = types.Float64Value(*got.ObstructionDetection.PowerThr)
-		}
-		if got.ObstructionDetection.Holdoff != nil {
-			state.ObstructionDetection.Holdoff = types.Float64Value(*got.ObstructionDetection.Holdoff)
-		}
-	}
-	if got.SafetySwitch != nil {
-		if state.SafetySwitch == nil {
-			state.SafetySwitch = &coverConfigSafetySwitchModel{}
-		}
-		if got.SafetySwitch.Enable != nil {
-			state.SafetySwitch.Enable = types.BoolValue(*got.SafetySwitch.Enable)
-		}
-		if got.SafetySwitch.Direction != nil {
-			state.SafetySwitch.Direction = types.StringValue(*got.SafetySwitch.Direction)
-		}
-	}
-	if got.Slat != nil {
-		if state.Slat == nil {
-			state.Slat = &coverConfigSlatModel{}
-		}
-		if got.Slat.Enable != nil {
-			state.Slat.Enable = types.BoolValue(*got.Slat.Enable)
-		}
-		if got.Slat.OpenTime != nil {
-			state.Slat.OpenTime = types.Float64Value(*got.Slat.OpenTime)
-		}
-		if got.Slat.CloseTime != nil {
-			state.Slat.CloseTime = types.Float64Value(*got.Slat.CloseTime)
-		}
-		if got.Slat.Step != nil {
-			state.Slat.Step = types.Float64Value(*got.Slat.Step)
-		}
-		if got.Slat.RetainPos != nil {
-			state.Slat.RetainPos = types.BoolValue(*got.Slat.RetainPos)
-		}
-		if got.Slat.PreciseCtl != nil {
-			state.Slat.PreciseCtl = types.BoolValue(*got.Slat.PreciseCtl)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *coverConfigResource) apply(plan coverConfigResourceModel, diags *diag.Diagnostics) {
+func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.CoverConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -480,7 +487,11 @@ func (r *coverConfigResource) Create(ctx context.Context, req resource.CreateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -493,7 +504,11 @@ func (r *coverConfigResource) Update(ctx context.Context, req resource.UpdateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

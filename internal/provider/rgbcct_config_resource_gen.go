@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -33,10 +34,12 @@ func NewRGBCCTConfigResource() resource.Resource { return &rgbcctConfigResource{
 type rgbcctConfigResource struct{}
 
 type rgbcctConfigNightModeModel struct {
-	Enable     types.Bool    `tfsdk:"enable"`
-	Brightness types.Float64 `tfsdk:"brightness"`
-	Ct         types.Float64 `tfsdk:"ct"`
-	Mode       types.String  `tfsdk:"mode"`
+	Enable        types.Bool    `tfsdk:"enable"`
+	Brightness    types.Float64 `tfsdk:"brightness"`
+	RGB           types.List    `tfsdk:"rgb"`
+	Ct            types.Float64 `tfsdk:"ct"`
+	Mode          types.String  `tfsdk:"mode"`
+	ActiveBetween types.List    `tfsdk:"active_between"`
 }
 
 type rgbcctConfigResourceModel struct {
@@ -128,6 +131,13 @@ func (r *rgbcctConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 						MarkdownDescription: "Brightness level limit (in percent) when night mode is active. null overrides night_mode.brightness with current brightness when night mode starts. Default value 50.",
 						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 					},
+					"rgb": schema.ListAttribute{
+						ElementType:         types.Float64Type,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Color level when night mode is active. Red, Green, Blue [r,g,b] - each value represents level between 0..255. null overrides night_mode.rgb array with current rgb array when night mode starts. Default value 255 for each color",
+						PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+					},
 					"ct": schema.Float64Attribute{
 						Optional:            true,
 						Computed:            true,
@@ -141,9 +151,78 @@ func (r *rgbcctConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 						Validators:          []validator.String{stringvalidator.OneOf("rgb")},
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
+					"active_between": schema.ListAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Containing 2 elements of type string, the first element indicates the start of the period during which the night mode will be active, the second indicates the end of that period. Both start and end are strings in the format HH:MM, where HH and MM are hours and minutes with optinal leading zeros",
+						PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+					},
 				},
 			},
 		},
+	}
+}
+
+func (r *rgbcctConfigResource) get(ctx context.Context, m *rgbcctConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.RGBCCTGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.InitialState != nil {
+		m.InitialState = types.StringValue(*got.InitialState)
+	}
+	if got.AutoOn != nil {
+		m.AutoOn = types.BoolValue(*got.AutoOn)
+	}
+	if got.AutoOnDelay != nil {
+		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	}
+	if got.AutoOff != nil {
+		m.AutoOff = types.BoolValue(*got.AutoOff)
+	}
+	if got.AutoOffDelay != nil {
+		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	}
+	if got.TransitionDuration != nil {
+		m.TransitionDuration = types.Float64Value(*got.TransitionDuration)
+	}
+	if got.MinBrightnessOnToggle != nil {
+		m.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
+	}
+	if got.NightMode != nil {
+		if m.NightMode == nil {
+			m.NightMode = &rgbcctConfigNightModeModel{}
+		}
+		if got.NightMode.Enable != nil {
+			m.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		}
+		if got.NightMode.Brightness != nil {
+			m.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		}
+		if got.NightMode.RGB != nil {
+			l, d := types.ListValueFrom(ctx, types.Float64Type, got.NightMode.RGB)
+			diags.Append(d...)
+			m.NightMode.RGB = l
+		}
+		if got.NightMode.Ct != nil {
+			m.NightMode.Ct = types.Float64Value(*got.NightMode.Ct)
+		}
+		if got.NightMode.Mode != nil {
+			m.NightMode.Mode = types.StringValue(*got.NightMode.Mode)
+		}
+		if got.NightMode.ActiveBetween != nil {
+			l, d := types.ListValueFrom(ctx, types.StringType, got.NightMode.ActiveBetween)
+			diags.Append(d...)
+			m.NightMode.ActiveBetween = l
+		}
 	}
 }
 
@@ -153,59 +232,14 @@ func (r *rgbcctConfigResource) Read(ctx context.Context, req resource.ReadReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.RGBCCTGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.InitialState != nil {
-		state.InitialState = types.StringValue(*got.InitialState)
-	}
-	if got.AutoOn != nil {
-		state.AutoOn = types.BoolValue(*got.AutoOn)
-	}
-	if got.AutoOnDelay != nil {
-		state.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
-	}
-	if got.AutoOff != nil {
-		state.AutoOff = types.BoolValue(*got.AutoOff)
-	}
-	if got.AutoOffDelay != nil {
-		state.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
-	}
-	if got.TransitionDuration != nil {
-		state.TransitionDuration = types.Float64Value(*got.TransitionDuration)
-	}
-	if got.MinBrightnessOnToggle != nil {
-		state.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
-	}
-	if got.NightMode != nil {
-		if state.NightMode == nil {
-			state.NightMode = &rgbcctConfigNightModeModel{}
-		}
-		if got.NightMode.Enable != nil {
-			state.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
-		}
-		if got.NightMode.Brightness != nil {
-			state.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
-		}
-		if got.NightMode.Ct != nil {
-			state.NightMode.Ct = types.Float64Value(*got.NightMode.Ct)
-		}
-		if got.NightMode.Mode != nil {
-			state.NightMode.Mode = types.StringValue(*got.NightMode.Mode)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *rgbcctConfigResource) apply(plan rgbcctConfigResourceModel, diags *diag.Diagnostics) {
+func (r *rgbcctConfigResource) apply(ctx context.Context, plan rgbcctConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.RGBCCTConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -250,6 +284,11 @@ func (r *rgbcctConfigResource) apply(plan rgbcctConfigResourceModel, diags *diag
 			v := plan.NightMode.Brightness.ValueFloat64()
 			cfg.NightMode.Brightness = &v
 		}
+		if !plan.NightMode.RGB.IsNull() && !plan.NightMode.RGB.IsUnknown() {
+			var v []float64
+			diags.Append(plan.NightMode.RGB.ElementsAs(ctx, &v, false)...)
+			cfg.NightMode.RGB = v
+		}
 		if !plan.NightMode.Ct.IsNull() && !plan.NightMode.Ct.IsUnknown() {
 			v := plan.NightMode.Ct.ValueFloat64()
 			cfg.NightMode.Ct = &v
@@ -257,6 +296,11 @@ func (r *rgbcctConfigResource) apply(plan rgbcctConfigResourceModel, diags *diag
 		if !plan.NightMode.Mode.IsNull() && !plan.NightMode.Mode.IsUnknown() {
 			v := plan.NightMode.Mode.ValueString()
 			cfg.NightMode.Mode = &v
+		}
+		if !plan.NightMode.ActiveBetween.IsNull() && !plan.NightMode.ActiveBetween.IsUnknown() {
+			var v []string
+			diags.Append(plan.NightMode.ActiveBetween.ElementsAs(ctx, &v, false)...)
+			cfg.NightMode.ActiveBetween = v
 		}
 	}
 	client := resty.New()
@@ -273,7 +317,11 @@ func (r *rgbcctConfigResource) Create(ctx context.Context, req resource.CreateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -286,7 +334,11 @@ func (r *rgbcctConfigResource) Update(ctx context.Context, req resource.UpdateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

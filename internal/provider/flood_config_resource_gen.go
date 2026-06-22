@@ -67,33 +67,40 @@ func (r *floodConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 	}
 }
 
+func (r *floodConfigResource) get(ctx context.Context, m *floodConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.FloodGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.AlarmMode != nil {
+		m.AlarmMode = types.StringValue(*got.AlarmMode)
+	}
+	if got.ReportHoldoff != nil {
+		m.ReportHoldoff = types.Float64Value(*got.ReportHoldoff)
+	}
+}
+
 func (r *floodConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state floodConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.FloodGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.AlarmMode != nil {
-		state.AlarmMode = types.StringValue(*got.AlarmMode)
-	}
-	if got.ReportHoldoff != nil {
-		state.ReportHoldoff = types.Float64Value(*got.ReportHoldoff)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *floodConfigResource) apply(plan floodConfigResourceModel, diags *diag.Diagnostics) {
+func (r *floodConfigResource) apply(ctx context.Context, plan floodConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.FloodConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -122,7 +129,11 @@ func (r *floodConfigResource) Create(ctx context.Context, req resource.CreateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -135,7 +146,11 @@ func (r *floodConfigResource) Update(ctx context.Context, req resource.UpdateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

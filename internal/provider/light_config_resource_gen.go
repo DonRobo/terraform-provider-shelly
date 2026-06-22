@@ -250,110 +250,117 @@ func (r *lightConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 	}
 }
 
+func (r *lightConfigResource) get(ctx context.Context, m *lightConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.LightGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.InMode != nil {
+		m.InMode = types.StringValue(*got.InMode)
+	}
+	if got.OpMode != nil {
+		m.OpMode = types.Float64Value(*got.OpMode)
+	}
+	if got.InitialState != nil {
+		m.InitialState = types.StringValue(*got.InitialState)
+	}
+	if got.AutoOn != nil {
+		m.AutoOn = types.BoolValue(*got.AutoOn)
+	}
+	if got.AutoOnDelay != nil {
+		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	}
+	if got.AutoOff != nil {
+		m.AutoOff = types.BoolValue(*got.AutoOff)
+	}
+	if got.AutoOffDelay != nil {
+		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	}
+	if got.TransitionDuration != nil {
+		m.TransitionDuration = types.Float64Value(*got.TransitionDuration)
+	}
+	if got.Gamma != nil {
+		m.Gamma = types.Float64Value(*got.Gamma)
+	}
+	if got.MinBrightnessOnToggle != nil {
+		m.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
+	}
+	if got.NightMode != nil {
+		if m.NightMode == nil {
+			m.NightMode = &lightConfigNightModeModel{}
+		}
+		if got.NightMode.Enable != nil {
+			m.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		}
+		if got.NightMode.Brightness != nil {
+			m.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		}
+	}
+	if got.ButtonFadeRate != nil {
+		m.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
+	}
+	if got.ButtonPresets != nil {
+		if m.ButtonPresets == nil {
+			m.ButtonPresets = &lightConfigButtonPresetsModel{}
+		}
+		if got.ButtonPresets.ButtonDoublepush != nil {
+			if m.ButtonPresets.ButtonDoublepush == nil {
+				m.ButtonPresets.ButtonDoublepush = &lightConfigButtonPresetsButtonDoublepushModel{}
+			}
+			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
+				m.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
+			}
+		}
+	}
+	if got.PowerLimit != nil {
+		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	}
+	if got.VoltageLimit != nil {
+		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	}
+	if got.UndervoltageLimit != nil {
+		m.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
+	}
+	if got.CurrentLimit != nil {
+		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	}
+	if got.Warmup != nil {
+		if m.Warmup == nil {
+			m.Warmup = &lightConfigWarmupModel{}
+		}
+		if got.Warmup.Enable != nil {
+			m.Warmup.Enable = types.BoolValue(*got.Warmup.Enable)
+		}
+		if got.Warmup.Brightness != nil {
+			m.Warmup.Brightness = types.Float64Value(*got.Warmup.Brightness)
+		}
+		if got.Warmup.TimeMs != nil {
+			m.Warmup.TimeMs = types.Float64Value(*got.Warmup.TimeMs)
+		}
+	}
+}
+
 func (r *lightConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state lightConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.LightGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.InMode != nil {
-		state.InMode = types.StringValue(*got.InMode)
-	}
-	if got.OpMode != nil {
-		state.OpMode = types.Float64Value(*got.OpMode)
-	}
-	if got.InitialState != nil {
-		state.InitialState = types.StringValue(*got.InitialState)
-	}
-	if got.AutoOn != nil {
-		state.AutoOn = types.BoolValue(*got.AutoOn)
-	}
-	if got.AutoOnDelay != nil {
-		state.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
-	}
-	if got.AutoOff != nil {
-		state.AutoOff = types.BoolValue(*got.AutoOff)
-	}
-	if got.AutoOffDelay != nil {
-		state.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
-	}
-	if got.TransitionDuration != nil {
-		state.TransitionDuration = types.Float64Value(*got.TransitionDuration)
-	}
-	if got.Gamma != nil {
-		state.Gamma = types.Float64Value(*got.Gamma)
-	}
-	if got.MinBrightnessOnToggle != nil {
-		state.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
-	}
-	if got.NightMode != nil {
-		if state.NightMode == nil {
-			state.NightMode = &lightConfigNightModeModel{}
-		}
-		if got.NightMode.Enable != nil {
-			state.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
-		}
-		if got.NightMode.Brightness != nil {
-			state.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
-		}
-	}
-	if got.ButtonFadeRate != nil {
-		state.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
-	}
-	if got.ButtonPresets != nil {
-		if state.ButtonPresets == nil {
-			state.ButtonPresets = &lightConfigButtonPresetsModel{}
-		}
-		if got.ButtonPresets.ButtonDoublepush != nil {
-			if state.ButtonPresets.ButtonDoublepush == nil {
-				state.ButtonPresets.ButtonDoublepush = &lightConfigButtonPresetsButtonDoublepushModel{}
-			}
-			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
-				state.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
-			}
-		}
-	}
-	if got.PowerLimit != nil {
-		state.PowerLimit = types.Float64Value(*got.PowerLimit)
-	}
-	if got.VoltageLimit != nil {
-		state.VoltageLimit = types.Float64Value(*got.VoltageLimit)
-	}
-	if got.UndervoltageLimit != nil {
-		state.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
-	}
-	if got.CurrentLimit != nil {
-		state.CurrentLimit = types.Float64Value(*got.CurrentLimit)
-	}
-	if got.Warmup != nil {
-		if state.Warmup == nil {
-			state.Warmup = &lightConfigWarmupModel{}
-		}
-		if got.Warmup.Enable != nil {
-			state.Warmup.Enable = types.BoolValue(*got.Warmup.Enable)
-		}
-		if got.Warmup.Brightness != nil {
-			state.Warmup.Brightness = types.Float64Value(*got.Warmup.Brightness)
-		}
-		if got.Warmup.TimeMs != nil {
-			state.Warmup.TimeMs = types.Float64Value(*got.Warmup.TimeMs)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *lightConfigResource) apply(plan lightConfigResourceModel, diags *diag.Diagnostics) {
+func (r *lightConfigResource) apply(ctx context.Context, plan lightConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.LightConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -470,7 +477,11 @@ func (r *lightConfigResource) Create(ctx context.Context, req resource.CreateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -483,7 +494,11 @@ func (r *lightConfigResource) Update(ctx context.Context, req resource.UpdateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

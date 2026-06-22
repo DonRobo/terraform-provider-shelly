@@ -47,27 +47,34 @@ func (r *modbusConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 	}
 }
 
+func (r *modbusConfigResource) get(ctx context.Context, m *modbusConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.ModbusGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Enable != nil {
+		m.Enable = types.BoolValue(*got.Enable)
+	}
+}
+
 func (r *modbusConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state modbusConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.ModbusGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Enable != nil {
-		state.Enable = types.BoolValue(*got.Enable)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *modbusConfigResource) apply(plan modbusConfigResourceModel, diags *diag.Diagnostics) {
+func (r *modbusConfigResource) apply(ctx context.Context, plan modbusConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.ModbusConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
@@ -87,7 +94,11 @@ func (r *modbusConfigResource) Create(ctx context.Context, req resource.CreateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -100,7 +111,11 @@ func (r *modbusConfigResource) Update(ctx context.Context, req resource.UpdateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

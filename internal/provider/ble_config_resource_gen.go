@@ -59,32 +59,39 @@ func (r *bleConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
+func (r *bleConfigResource) get(ctx context.Context, m *bleConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.BLEGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.RPC != nil {
+		if m.RPC == nil {
+			m.RPC = &bleConfigRPCModel{}
+		}
+		if got.RPC.Enable != nil {
+			m.RPC.Enable = types.BoolValue(*got.RPC.Enable)
+		}
+	}
+}
+
 func (r *bleConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state bleConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.BLEGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.RPC != nil {
-		if state.RPC == nil {
-			state.RPC = &bleConfigRPCModel{}
-		}
-		if got.RPC.Enable != nil {
-			state.RPC.Enable = types.BoolValue(*got.RPC.Enable)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *bleConfigResource) apply(plan bleConfigResourceModel, diags *diag.Diagnostics) {
+func (r *bleConfigResource) apply(ctx context.Context, plan bleConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.BLEConfig
 	if plan.RPC != nil {
 		cfg.RPC = &components.BLEConfigRPC{}
@@ -107,7 +114,11 @@ func (r *bleConfigResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -120,7 +131,11 @@ func (r *bleConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

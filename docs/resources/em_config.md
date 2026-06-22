@@ -22,12 +22,53 @@ description: |-
 
 ### Optional
 
+- `alarms` (Attributes) (see [below for nested schema](#nestedatt--alarms))
 - `blink_mode_selector` (String) Select the electrical quantity that drives the LED. Range of values: active_energy, apparent_energy
 - `ct_type` (String) Select the type of Shelly current transformer attached to the device.
 - `monitor_phase_sequence` (Boolean) Set this to show phase_sequence error in GetStatus if three-phase power system is used and the wires are not connected correctly to the device.
 - `name` (String) Name of the energy meter instance
 - `phase_selector` (String) Select witch phase controls the LED. Range of values: a, b, c, all
 - `reverse` (Attributes) (see [below for nested schema](#nestedatt--reverse))
+
+<a id="nestedatt--alarms"></a>
+### Nested Schema for `alarms`
+
+Optional:
+
+- `a` (Attributes) (see [below for nested schema](#nestedatt--alarms--a))
+- `b` (Attributes) (see [below for nested schema](#nestedatt--alarms--b))
+- `c` (Attributes) (see [below for nested schema](#nestedatt--alarms--c))
+
+<a id="nestedatt--alarms--a"></a>
+### Nested Schema for `alarms.a`
+
+Optional:
+
+- `current` (List of Number) ['under','over'] thresholds
+- `power` (List of Number) ['under','over'] thresholds
+- `voltage` (List of Number) ['under','over'] thresholds
+
+
+<a id="nestedatt--alarms--b"></a>
+### Nested Schema for `alarms.b`
+
+Optional:
+
+- `current` (List of Number) ['under','over'] thresholds
+- `power` (List of Number) ['under','over'] thresholds
+- `voltage` (List of Number) ['under','over'] thresholds
+
+
+<a id="nestedatt--alarms--c"></a>
+### Nested Schema for `alarms.c`
+
+Optional:
+
+- `current` (List of Number) ['under','over'] thresholds
+- `power` (List of Number) ['under','over'] thresholds
+- `voltage` (List of Number) ['under','over'] thresholds
+
+
 
 <a id="nestedatt--reverse"></a>
 ### Nested Schema for `reverse`

@@ -11,6 +11,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,12 +30,19 @@ func NewEM1ConfigResource() resource.Resource { return &em1ConfigResource{} }
 
 type em1ConfigResource struct{}
 
+type em1ConfigAlarmsModel struct {
+	Voltage types.List `tfsdk:"voltage"`
+	Current types.List `tfsdk:"current"`
+	Power   types.List `tfsdk:"power"`
+}
+
 type em1ConfigResourceModel struct {
-	IP      types.String `tfsdk:"ip"`
-	ID      types.Int64  `tfsdk:"id"`
-	Name    types.String `tfsdk:"name"`
-	Reverse types.Bool   `tfsdk:"reverse"`
-	CtType  types.String `tfsdk:"ct_type"`
+	IP      types.String          `tfsdk:"ip"`
+	ID      types.Int64           `tfsdk:"id"`
+	Name    types.String          `tfsdk:"name"`
+	Reverse types.Bool            `tfsdk:"reverse"`
+	CtType  types.String          `tfsdk:"ct_type"`
+	Alarms  *em1ConfigAlarmsModel `tfsdk:"alarms"`
 }
 
 func (r *em1ConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -63,7 +72,75 @@ func (r *em1ConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				MarkdownDescription: "Select the type of Shelly current transformer attached to the device.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"alarms": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"voltage": schema.ListAttribute{
+						ElementType:         types.Float64Type,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "['under','over'] thresholds",
+						PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+					},
+					"current": schema.ListAttribute{
+						ElementType:         types.Float64Type,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "['under','over'] thresholds",
+						PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+					},
+					"power": schema.ListAttribute{
+						ElementType:         types.Float64Type,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "['under','over'] thresholds",
+						PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 		},
+	}
+}
+
+func (r *em1ConfigResource) get(ctx context.Context, m *em1ConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.EM1GetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.Reverse != nil {
+		m.Reverse = types.BoolValue(*got.Reverse)
+	}
+	if got.CtType != nil {
+		m.CtType = types.StringValue(*got.CtType)
+	}
+	if got.Alarms != nil {
+		if m.Alarms == nil {
+			m.Alarms = &em1ConfigAlarmsModel{}
+		}
+		if got.Alarms.Voltage != nil {
+			l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.Voltage)
+			diags.Append(d...)
+			m.Alarms.Voltage = l
+		}
+		if got.Alarms.Current != nil {
+			l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.Current)
+			diags.Append(d...)
+			m.Alarms.Current = l
+		}
+		if got.Alarms.Power != nil {
+			l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.Power)
+			diags.Append(d...)
+			m.Alarms.Power = l
+		}
 	}
 }
 
@@ -73,27 +150,14 @@ func (r *em1ConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.EM1GetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.Reverse != nil {
-		state.Reverse = types.BoolValue(*got.Reverse)
-	}
-	if got.CtType != nil {
-		state.CtType = types.StringValue(*got.CtType)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *em1ConfigResource) apply(plan em1ConfigResourceModel, diags *diag.Diagnostics) {
+func (r *em1ConfigResource) apply(ctx context.Context, plan em1ConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.EM1Config
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -107,6 +171,24 @@ func (r *em1ConfigResource) apply(plan em1ConfigResourceModel, diags *diag.Diagn
 	if !plan.CtType.IsNull() && !plan.CtType.IsUnknown() {
 		v := plan.CtType.ValueString()
 		cfg.CtType = &v
+	}
+	if plan.Alarms != nil {
+		cfg.Alarms = &components.EM1ConfigAlarms{}
+		if !plan.Alarms.Voltage.IsNull() && !plan.Alarms.Voltage.IsUnknown() {
+			var v []float64
+			diags.Append(plan.Alarms.Voltage.ElementsAs(ctx, &v, false)...)
+			cfg.Alarms.Voltage = v
+		}
+		if !plan.Alarms.Current.IsNull() && !plan.Alarms.Current.IsUnknown() {
+			var v []float64
+			diags.Append(plan.Alarms.Current.ElementsAs(ctx, &v, false)...)
+			cfg.Alarms.Current = v
+		}
+		if !plan.Alarms.Power.IsNull() && !plan.Alarms.Power.IsUnknown() {
+			var v []float64
+			diags.Append(plan.Alarms.Power.ElementsAs(ctx, &v, false)...)
+			cfg.Alarms.Power = v
+		}
 	}
 	client := resty.New()
 	defer client.Close()
@@ -122,7 +204,11 @@ func (r *em1ConfigResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -135,7 +221,11 @@ func (r *em1ConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

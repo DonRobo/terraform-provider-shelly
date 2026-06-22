@@ -193,87 +193,94 @@ func (r *inputConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 	}
 }
 
+func (r *inputConfigResource) get(ctx context.Context, m *inputConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.InputGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.Type != nil {
+		m.Type = types.StringValue(*got.Type)
+	}
+	if got.Enable != nil {
+		m.Enable = types.BoolValue(*got.Enable)
+	}
+	if got.Invert != nil {
+		m.Invert = types.BoolValue(*got.Invert)
+	}
+	if got.FactoryReset != nil {
+		m.FactoryReset = types.BoolValue(*got.FactoryReset)
+	}
+	if got.ReportThr != nil {
+		m.ReportThr = types.Float64Value(*got.ReportThr)
+	}
+	if got.Range != nil {
+		m.Range = types.Float64Value(*got.Range)
+	}
+	if got.Xpercent != nil {
+		if m.Xpercent == nil {
+			m.Xpercent = &inputConfigXpercentModel{}
+		}
+		if got.Xpercent.Expr != nil {
+			m.Xpercent.Expr = types.StringValue(*got.Xpercent.Expr)
+		}
+		if got.Xpercent.Unit != nil {
+			m.Xpercent.Unit = types.StringValue(*got.Xpercent.Unit)
+		}
+	}
+	if got.CountRepThr != nil {
+		m.CountRepThr = types.Float64Value(*got.CountRepThr)
+	}
+	if got.FreqWindow != nil {
+		m.FreqWindow = types.Float64Value(*got.FreqWindow)
+	}
+	if got.FreqRepThr != nil {
+		m.FreqRepThr = types.Float64Value(*got.FreqRepThr)
+	}
+	if got.Xcounts != nil {
+		if m.Xcounts == nil {
+			m.Xcounts = &inputConfigXcountsModel{}
+		}
+		if got.Xcounts.Expr != nil {
+			m.Xcounts.Expr = types.StringValue(*got.Xcounts.Expr)
+		}
+		if got.Xcounts.Unit != nil {
+			m.Xcounts.Unit = types.StringValue(*got.Xcounts.Unit)
+		}
+	}
+	if got.Xfreq != nil {
+		if m.Xfreq == nil {
+			m.Xfreq = &inputConfigXfreqModel{}
+		}
+		if got.Xfreq.Expr != nil {
+			m.Xfreq.Expr = types.StringValue(*got.Xfreq.Expr)
+		}
+		if got.Xfreq.Unit != nil {
+			m.Xfreq.Unit = types.StringValue(*got.Xfreq.Unit)
+		}
+	}
+}
+
 func (r *inputConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state inputConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.InputGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.Type != nil {
-		state.Type = types.StringValue(*got.Type)
-	}
-	if got.Enable != nil {
-		state.Enable = types.BoolValue(*got.Enable)
-	}
-	if got.Invert != nil {
-		state.Invert = types.BoolValue(*got.Invert)
-	}
-	if got.FactoryReset != nil {
-		state.FactoryReset = types.BoolValue(*got.FactoryReset)
-	}
-	if got.ReportThr != nil {
-		state.ReportThr = types.Float64Value(*got.ReportThr)
-	}
-	if got.Range != nil {
-		state.Range = types.Float64Value(*got.Range)
-	}
-	if got.Xpercent != nil {
-		if state.Xpercent == nil {
-			state.Xpercent = &inputConfigXpercentModel{}
-		}
-		if got.Xpercent.Expr != nil {
-			state.Xpercent.Expr = types.StringValue(*got.Xpercent.Expr)
-		}
-		if got.Xpercent.Unit != nil {
-			state.Xpercent.Unit = types.StringValue(*got.Xpercent.Unit)
-		}
-	}
-	if got.CountRepThr != nil {
-		state.CountRepThr = types.Float64Value(*got.CountRepThr)
-	}
-	if got.FreqWindow != nil {
-		state.FreqWindow = types.Float64Value(*got.FreqWindow)
-	}
-	if got.FreqRepThr != nil {
-		state.FreqRepThr = types.Float64Value(*got.FreqRepThr)
-	}
-	if got.Xcounts != nil {
-		if state.Xcounts == nil {
-			state.Xcounts = &inputConfigXcountsModel{}
-		}
-		if got.Xcounts.Expr != nil {
-			state.Xcounts.Expr = types.StringValue(*got.Xcounts.Expr)
-		}
-		if got.Xcounts.Unit != nil {
-			state.Xcounts.Unit = types.StringValue(*got.Xcounts.Unit)
-		}
-	}
-	if got.Xfreq != nil {
-		if state.Xfreq == nil {
-			state.Xfreq = &inputConfigXfreqModel{}
-		}
-		if got.Xfreq.Expr != nil {
-			state.Xfreq.Expr = types.StringValue(*got.Xfreq.Expr)
-		}
-		if got.Xfreq.Unit != nil {
-			state.Xfreq.Unit = types.StringValue(*got.Xfreq.Unit)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *inputConfigResource) apply(plan inputConfigResourceModel, diags *diag.Diagnostics) {
+func (r *inputConfigResource) apply(ctx context.Context, plan inputConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.InputConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -363,7 +370,11 @@ func (r *inputConfigResource) Create(ctx context.Context, req resource.CreateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -376,7 +387,11 @@ func (r *inputConfigResource) Update(ctx context.Context, req resource.UpdateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

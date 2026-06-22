@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -36,6 +37,7 @@ type devicepowerConfigResourceModel struct {
 	IP      types.String                   `tfsdk:"ip"`
 	ID      types.Int64                    `tfsdk:"id"`
 	Battery *devicepowerConfigBatteryModel `tfsdk:"battery"`
+	Errors  types.List                     `tfsdk:"errors"`
 }
 
 func (r *devicepowerConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -60,7 +62,38 @@ func (r *devicepowerConfigResource) Schema(_ context.Context, _ resource.SchemaR
 					},
 				},
 			},
+			"errors": schema.ListAttribute{
+				ElementType:         types.StringType,
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether external power source is connected",
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+			},
 		},
+	}
+}
+
+func (r *devicepowerConfigResource) get(ctx context.Context, m *devicepowerConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.DevicePowerGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Battery != nil {
+		if m.Battery == nil {
+			m.Battery = &devicepowerConfigBatteryModel{}
+		}
+		if got.Battery.Percent != nil {
+			m.Battery.Percent = types.Float64Value(*got.Battery.Percent)
+		}
+	}
+	if got.Errors != nil {
+		l, d := types.ListValueFrom(ctx, types.StringType, got.Errors)
+		diags.Append(d...)
+		m.Errors = l
 	}
 }
 
@@ -70,26 +103,14 @@ func (r *devicepowerConfigResource) Read(ctx context.Context, req resource.ReadR
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.DevicePowerGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Battery != nil {
-		if state.Battery == nil {
-			state.Battery = &devicepowerConfigBatteryModel{}
-		}
-		if got.Battery.Percent != nil {
-			state.Battery.Percent = types.Float64Value(*got.Battery.Percent)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *devicepowerConfigResource) apply(plan devicepowerConfigResourceModel, diags *diag.Diagnostics) {
+func (r *devicepowerConfigResource) apply(ctx context.Context, plan devicepowerConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.DevicePowerConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if plan.Battery != nil {
@@ -98,6 +119,11 @@ func (r *devicepowerConfigResource) apply(plan devicepowerConfigResourceModel, d
 			v := plan.Battery.Percent.ValueFloat64()
 			cfg.Battery.Percent = &v
 		}
+	}
+	if !plan.Errors.IsNull() && !plan.Errors.IsUnknown() {
+		var v []string
+		diags.Append(plan.Errors.ElementsAs(ctx, &v, false)...)
+		cfg.Errors = v
 	}
 	client := resty.New()
 	defer client.Close()
@@ -113,7 +139,11 @@ func (r *devicepowerConfigResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -126,7 +156,11 @@ func (r *devicepowerConfigResource) Update(ctx context.Context, req resource.Upd
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

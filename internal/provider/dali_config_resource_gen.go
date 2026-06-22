@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -34,6 +35,7 @@ type daliConfigResourceModel struct {
 	IP      types.String         `tfsdk:"ip"`
 	CgCount types.Float64        `tfsdk:"cg_count"`
 	Scan    *daliConfigScanModel `tfsdk:"scan"`
+	Errors  types.List           `tfsdk:"errors"`
 }
 
 func (r *daliConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -69,7 +71,44 @@ func (r *daliConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 					},
 				},
 			},
+			"errors": schema.ListAttribute{
+				ElementType:         types.StringType,
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Shown only if at least one error is present. May contain control_gear_missing, driver",
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+			},
 		},
+	}
+}
+
+func (r *daliConfigResource) get(ctx context.Context, m *daliConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.DALIGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.CgCount != nil {
+		m.CgCount = types.Float64Value(*got.CgCount)
+	}
+	if got.Scan != nil {
+		if m.Scan == nil {
+			m.Scan = &daliConfigScanModel{}
+		}
+		if got.Scan.CgCount != nil {
+			m.Scan.CgCount = types.Float64Value(*got.Scan.CgCount)
+		}
+		if got.Scan.StartedAt != nil {
+			m.Scan.StartedAt = types.Float64Value(*got.Scan.StartedAt)
+		}
+	}
+	if got.Errors != nil {
+		l, d := types.ListValueFrom(ctx, types.StringType, got.Errors)
+		diags.Append(d...)
+		m.Errors = l
 	}
 }
 
@@ -79,32 +118,14 @@ func (r *daliConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.DALIGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.CgCount != nil {
-		state.CgCount = types.Float64Value(*got.CgCount)
-	}
-	if got.Scan != nil {
-		if state.Scan == nil {
-			state.Scan = &daliConfigScanModel{}
-		}
-		if got.Scan.CgCount != nil {
-			state.Scan.CgCount = types.Float64Value(*got.Scan.CgCount)
-		}
-		if got.Scan.StartedAt != nil {
-			state.Scan.StartedAt = types.Float64Value(*got.Scan.StartedAt)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *daliConfigResource) apply(plan daliConfigResourceModel, diags *diag.Diagnostics) {
+func (r *daliConfigResource) apply(ctx context.Context, plan daliConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.DALIConfig
 	if !plan.CgCount.IsNull() && !plan.CgCount.IsUnknown() {
 		v := plan.CgCount.ValueFloat64()
@@ -121,6 +142,11 @@ func (r *daliConfigResource) apply(plan daliConfigResourceModel, diags *diag.Dia
 			cfg.Scan.StartedAt = &v
 		}
 	}
+	if !plan.Errors.IsNull() && !plan.Errors.IsUnknown() {
+		var v []string
+		diags.Append(plan.Errors.ElementsAs(ctx, &v, false)...)
+		cfg.Errors = v
+	}
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
@@ -135,7 +161,11 @@ func (r *daliConfigResource) Create(ctx context.Context, req resource.CreateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -148,7 +178,11 @@ func (r *daliConfigResource) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

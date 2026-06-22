@@ -75,36 +75,43 @@ func (r *presencezoneConfigResource) Schema(_ context.Context, _ resource.Schema
 	}
 }
 
+func (r *presencezoneConfigResource) get(ctx context.Context, m *presencezoneConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.PresenceZoneGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.Enable != nil {
+		m.Enable = types.BoolValue(*got.Enable)
+	}
+	if got.PresenceDelay != nil {
+		m.PresenceDelay = types.Float64Value(*got.PresenceDelay)
+	}
+	if got.AbsenceDelay != nil {
+		m.AbsenceDelay = types.Float64Value(*got.AbsenceDelay)
+	}
+}
+
 func (r *presencezoneConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state presencezoneConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.PresenceZoneGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.Enable != nil {
-		state.Enable = types.BoolValue(*got.Enable)
-	}
-	if got.PresenceDelay != nil {
-		state.PresenceDelay = types.Float64Value(*got.PresenceDelay)
-	}
-	if got.AbsenceDelay != nil {
-		state.AbsenceDelay = types.Float64Value(*got.AbsenceDelay)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *presencezoneConfigResource) apply(plan presencezoneConfigResourceModel, diags *diag.Diagnostics) {
+func (r *presencezoneConfigResource) apply(ctx context.Context, plan presencezoneConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.PresenceZoneConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -137,7 +144,11 @@ func (r *presencezoneConfigResource) Create(ctx context.Context, req resource.Cr
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -150,7 +161,11 @@ func (r *presencezoneConfigResource) Update(ctx context.Context, req resource.Up
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

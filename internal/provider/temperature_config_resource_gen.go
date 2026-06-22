@@ -67,33 +67,40 @@ func (r *temperatureConfigResource) Schema(_ context.Context, _ resource.SchemaR
 	}
 }
 
+func (r *temperatureConfigResource) get(ctx context.Context, m *temperatureConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.TemperatureGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.ReportThrC != nil {
+		m.ReportThrC = types.Float64Value(*got.ReportThrC)
+	}
+	if got.OffsetC != nil {
+		m.OffsetC = types.Float64Value(*got.OffsetC)
+	}
+}
+
 func (r *temperatureConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state temperatureConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.TemperatureGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.ReportThrC != nil {
-		state.ReportThrC = types.Float64Value(*got.ReportThrC)
-	}
-	if got.OffsetC != nil {
-		state.OffsetC = types.Float64Value(*got.OffsetC)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *temperatureConfigResource) apply(plan temperatureConfigResourceModel, diags *diag.Diagnostics) {
+func (r *temperatureConfigResource) apply(ctx context.Context, plan temperatureConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.TemperatureConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -122,7 +129,11 @@ func (r *temperatureConfigResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -135,7 +146,11 @@ func (r *temperatureConfigResource) Update(ctx context.Context, req resource.Upd
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

@@ -100,48 +100,55 @@ func (r *ethConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
+func (r *ethConfigResource) get(ctx context.Context, m *ethConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.EthGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Enable != nil {
+		m.Enable = types.BoolValue(*got.Enable)
+	}
+	if got.ServerMode != nil {
+		m.ServerMode = types.BoolValue(*got.ServerMode)
+	}
+	if got.Ipv4mode != nil {
+		m.Ipv4mode = types.StringValue(*got.Ipv4mode)
+	}
+	if got.Netmask != nil {
+		m.Netmask = types.StringValue(*got.Netmask)
+	}
+	if got.Gw != nil {
+		m.Gw = types.StringValue(*got.Gw)
+	}
+	if got.Nameserver != nil {
+		m.Nameserver = types.StringValue(*got.Nameserver)
+	}
+	if got.DhcpStart != nil {
+		m.DhcpStart = types.StringValue(*got.DhcpStart)
+	}
+	if got.DhcpEnd != nil {
+		m.DhcpEnd = types.StringValue(*got.DhcpEnd)
+	}
+}
+
 func (r *ethConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state ethConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.EthGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Enable != nil {
-		state.Enable = types.BoolValue(*got.Enable)
-	}
-	if got.ServerMode != nil {
-		state.ServerMode = types.BoolValue(*got.ServerMode)
-	}
-	if got.Ipv4mode != nil {
-		state.Ipv4mode = types.StringValue(*got.Ipv4mode)
-	}
-	if got.Netmask != nil {
-		state.Netmask = types.StringValue(*got.Netmask)
-	}
-	if got.Gw != nil {
-		state.Gw = types.StringValue(*got.Gw)
-	}
-	if got.Nameserver != nil {
-		state.Nameserver = types.StringValue(*got.Nameserver)
-	}
-	if got.DhcpStart != nil {
-		state.DhcpStart = types.StringValue(*got.DhcpStart)
-	}
-	if got.DhcpEnd != nil {
-		state.DhcpEnd = types.StringValue(*got.DhcpEnd)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *ethConfigResource) apply(plan ethConfigResourceModel, diags *diag.Diagnostics) {
+func (r *ethConfigResource) apply(ctx context.Context, plan ethConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.EthConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
@@ -189,7 +196,11 @@ func (r *ethConfigResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -202,7 +213,11 @@ func (r *ethConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

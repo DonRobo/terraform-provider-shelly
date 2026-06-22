@@ -116,13 +116,11 @@ func (r *sysConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 					},
 					"mac": schema.StringAttribute{
-						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "Read-only base MAC address of the device",
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"fw_id": schema.StringAttribute{
-						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "Read-only build identifier of the current firmware image",
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
@@ -292,132 +290,139 @@ func (r *sysConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
+func (r *sysConfigResource) get(ctx context.Context, m *sysConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.SysGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Device != nil {
+		if m.Device == nil {
+			m.Device = &sysConfigDeviceModel{}
+		}
+		if got.Device.Name != nil {
+			m.Device.Name = types.StringValue(*got.Device.Name)
+		}
+		if got.Device.EcoMode != nil {
+			m.Device.EcoMode = types.BoolValue(*got.Device.EcoMode)
+		}
+		if got.Device.MAC != nil {
+			m.Device.MAC = types.StringValue(*got.Device.MAC)
+		}
+		if got.Device.FWID != nil {
+			m.Device.FWID = types.StringValue(*got.Device.FWID)
+		}
+		if got.Device.Profile != nil {
+			m.Device.Profile = types.StringValue(*got.Device.Profile)
+		}
+		if got.Device.Discoverable != nil {
+			m.Device.Discoverable = types.BoolValue(*got.Device.Discoverable)
+		}
+		if got.Device.AddonType != nil {
+			m.Device.AddonType = types.StringValue(*got.Device.AddonType)
+		}
+		if got.Device.SysBtnToggle != nil {
+			m.Device.SysBtnToggle = types.BoolValue(*got.Device.SysBtnToggle)
+		}
+		if got.Device.TLSCheckCertValidityTime != nil {
+			m.Device.TLSCheckCertValidityTime = types.BoolValue(*got.Device.TLSCheckCertValidityTime)
+		}
+		if got.Device.EnhancedSecurity != nil {
+			m.Device.EnhancedSecurity = types.BoolValue(*got.Device.EnhancedSecurity)
+		}
+	}
+	if got.Location != nil {
+		if m.Location == nil {
+			m.Location = &sysConfigLocationModel{}
+		}
+		if got.Location.Tz != nil {
+			m.Location.Tz = types.StringValue(*got.Location.Tz)
+		}
+		if got.Location.Lat != nil {
+			m.Location.Lat = types.Float64Value(*got.Location.Lat)
+		}
+		if got.Location.Lon != nil {
+			m.Location.Lon = types.Float64Value(*got.Location.Lon)
+		}
+	}
+	if got.Debug != nil {
+		if m.Debug == nil {
+			m.Debug = &sysConfigDebugModel{}
+		}
+		if got.Debug.MQTT != nil {
+			if m.Debug.MQTT == nil {
+				m.Debug.MQTT = &sysConfigDebugMQTTModel{}
+			}
+			if got.Debug.MQTT.Enable != nil {
+				m.Debug.MQTT.Enable = types.BoolValue(*got.Debug.MQTT.Enable)
+			}
+		}
+		if got.Debug.Websocket != nil {
+			if m.Debug.Websocket == nil {
+				m.Debug.Websocket = &sysConfigDebugWebsocketModel{}
+			}
+			if got.Debug.Websocket.Enable != nil {
+				m.Debug.Websocket.Enable = types.BoolValue(*got.Debug.Websocket.Enable)
+			}
+		}
+		if got.Debug.Udp != nil {
+			if m.Debug.Udp == nil {
+				m.Debug.Udp = &sysConfigDebugUdpModel{}
+			}
+			if got.Debug.Udp.Addr != nil {
+				m.Debug.Udp.Addr = types.StringValue(*got.Debug.Udp.Addr)
+			}
+		}
+		if got.Debug.FileLog != nil {
+			if m.Debug.FileLog == nil {
+				m.Debug.FileLog = &sysConfigDebugFileLogModel{}
+			}
+			if got.Debug.FileLog.Enable != nil {
+				m.Debug.FileLog.Enable = types.BoolValue(*got.Debug.FileLog.Enable)
+			}
+		}
+	}
+	if got.RPCUdp != nil {
+		if m.RPCUdp == nil {
+			m.RPCUdp = &sysConfigRPCUdpModel{}
+		}
+		if got.RPCUdp.DstAddr != nil {
+			m.RPCUdp.DstAddr = types.StringValue(*got.RPCUdp.DstAddr)
+		}
+		if got.RPCUdp.ListenPort != nil {
+			m.RPCUdp.ListenPort = types.Float64Value(*got.RPCUdp.ListenPort)
+		}
+	}
+	if got.Sntp != nil {
+		if m.Sntp == nil {
+			m.Sntp = &sysConfigSntpModel{}
+		}
+		if got.Sntp.Server != nil {
+			m.Sntp.Server = types.StringValue(*got.Sntp.Server)
+		}
+	}
+	if got.CfgRev != nil {
+		m.CfgRev = types.Float64Value(*got.CfgRev)
+	}
+}
+
 func (r *sysConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state sysConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.SysGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Device != nil {
-		if state.Device == nil {
-			state.Device = &sysConfigDeviceModel{}
-		}
-		if got.Device.Name != nil {
-			state.Device.Name = types.StringValue(*got.Device.Name)
-		}
-		if got.Device.EcoMode != nil {
-			state.Device.EcoMode = types.BoolValue(*got.Device.EcoMode)
-		}
-		if got.Device.MAC != nil {
-			state.Device.MAC = types.StringValue(*got.Device.MAC)
-		}
-		if got.Device.FWID != nil {
-			state.Device.FWID = types.StringValue(*got.Device.FWID)
-		}
-		if got.Device.Profile != nil {
-			state.Device.Profile = types.StringValue(*got.Device.Profile)
-		}
-		if got.Device.Discoverable != nil {
-			state.Device.Discoverable = types.BoolValue(*got.Device.Discoverable)
-		}
-		if got.Device.AddonType != nil {
-			state.Device.AddonType = types.StringValue(*got.Device.AddonType)
-		}
-		if got.Device.SysBtnToggle != nil {
-			state.Device.SysBtnToggle = types.BoolValue(*got.Device.SysBtnToggle)
-		}
-		if got.Device.TLSCheckCertValidityTime != nil {
-			state.Device.TLSCheckCertValidityTime = types.BoolValue(*got.Device.TLSCheckCertValidityTime)
-		}
-		if got.Device.EnhancedSecurity != nil {
-			state.Device.EnhancedSecurity = types.BoolValue(*got.Device.EnhancedSecurity)
-		}
-	}
-	if got.Location != nil {
-		if state.Location == nil {
-			state.Location = &sysConfigLocationModel{}
-		}
-		if got.Location.Tz != nil {
-			state.Location.Tz = types.StringValue(*got.Location.Tz)
-		}
-		if got.Location.Lat != nil {
-			state.Location.Lat = types.Float64Value(*got.Location.Lat)
-		}
-		if got.Location.Lon != nil {
-			state.Location.Lon = types.Float64Value(*got.Location.Lon)
-		}
-	}
-	if got.Debug != nil {
-		if state.Debug == nil {
-			state.Debug = &sysConfigDebugModel{}
-		}
-		if got.Debug.MQTT != nil {
-			if state.Debug.MQTT == nil {
-				state.Debug.MQTT = &sysConfigDebugMQTTModel{}
-			}
-			if got.Debug.MQTT.Enable != nil {
-				state.Debug.MQTT.Enable = types.BoolValue(*got.Debug.MQTT.Enable)
-			}
-		}
-		if got.Debug.Websocket != nil {
-			if state.Debug.Websocket == nil {
-				state.Debug.Websocket = &sysConfigDebugWebsocketModel{}
-			}
-			if got.Debug.Websocket.Enable != nil {
-				state.Debug.Websocket.Enable = types.BoolValue(*got.Debug.Websocket.Enable)
-			}
-		}
-		if got.Debug.Udp != nil {
-			if state.Debug.Udp == nil {
-				state.Debug.Udp = &sysConfigDebugUdpModel{}
-			}
-			if got.Debug.Udp.Addr != nil {
-				state.Debug.Udp.Addr = types.StringValue(*got.Debug.Udp.Addr)
-			}
-		}
-		if got.Debug.FileLog != nil {
-			if state.Debug.FileLog == nil {
-				state.Debug.FileLog = &sysConfigDebugFileLogModel{}
-			}
-			if got.Debug.FileLog.Enable != nil {
-				state.Debug.FileLog.Enable = types.BoolValue(*got.Debug.FileLog.Enable)
-			}
-		}
-	}
-	if got.RPCUdp != nil {
-		if state.RPCUdp == nil {
-			state.RPCUdp = &sysConfigRPCUdpModel{}
-		}
-		if got.RPCUdp.DstAddr != nil {
-			state.RPCUdp.DstAddr = types.StringValue(*got.RPCUdp.DstAddr)
-		}
-		if got.RPCUdp.ListenPort != nil {
-			state.RPCUdp.ListenPort = types.Float64Value(*got.RPCUdp.ListenPort)
-		}
-	}
-	if got.Sntp != nil {
-		if state.Sntp == nil {
-			state.Sntp = &sysConfigSntpModel{}
-		}
-		if got.Sntp.Server != nil {
-			state.Sntp.Server = types.StringValue(*got.Sntp.Server)
-		}
-	}
-	if got.CfgRev != nil {
-		state.CfgRev = types.Float64Value(*got.CfgRev)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *sysConfigResource) apply(plan sysConfigResourceModel, diags *diag.Diagnostics) {
+func (r *sysConfigResource) apply(ctx context.Context, plan sysConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.SysConfig
 	if plan.Device != nil {
 		cfg.Device = &components.SysConfigDevice{}
@@ -428,14 +433,6 @@ func (r *sysConfigResource) apply(plan sysConfigResourceModel, diags *diag.Diagn
 		if !plan.Device.EcoMode.IsNull() && !plan.Device.EcoMode.IsUnknown() {
 			v := plan.Device.EcoMode.ValueBool()
 			cfg.Device.EcoMode = &v
-		}
-		if !plan.Device.MAC.IsNull() && !plan.Device.MAC.IsUnknown() {
-			v := plan.Device.MAC.ValueString()
-			cfg.Device.MAC = &v
-		}
-		if !plan.Device.FWID.IsNull() && !plan.Device.FWID.IsUnknown() {
-			v := plan.Device.FWID.ValueString()
-			cfg.Device.FWID = &v
 		}
 		if !plan.Device.Profile.IsNull() && !plan.Device.Profile.IsUnknown() {
 			v := plan.Device.Profile.ValueString()
@@ -544,7 +541,11 @@ func (r *sysConfigResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -557,7 +558,11 @@ func (r *sysConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

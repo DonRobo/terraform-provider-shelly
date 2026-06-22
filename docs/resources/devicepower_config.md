@@ -23,6 +23,7 @@ description: |-
 ### Optional
 
 - `battery` (Attributes) (see [below for nested schema](#nestedatt--battery))
+- `errors` (List of String) Whether external power source is connected
 
 <a id="nestedatt--battery"></a>
 ### Nested Schema for `battery`
