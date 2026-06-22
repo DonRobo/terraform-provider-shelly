@@ -27,3 +27,13 @@ description: |-
 - `monitor_phase_sequence` (Boolean) Set this to show phase_sequence error in GetStatus if three-phase power system is used and the wires are not connected correctly to the device.
 - `name` (String) Name of the energy meter instance
 - `phase_selector` (String) Select witch phase controls the LED. Range of values: a, b, c, all
+- `reverse` (Attributes) (see [below for nested schema](#nestedatt--reverse))
+
+<a id="nestedatt--reverse"></a>
+### Nested Schema for `reverse`
+
+Optional:
+
+- `a` (Boolean) When set to true reverse CT measurement direction of active power and energy for phase A. shown if true
+- `b` (Boolean) When set to true reverse CT measurement direction of active power and energy for phase B. shown if true
+- `c` (Boolean) When set to true reverse CT measurement direction of active power and energy for phase C. shown if true

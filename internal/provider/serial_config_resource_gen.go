@@ -5,11 +5,14 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -27,10 +30,23 @@ func NewSerialConfigResource() resource.Resource { return &serialConfigResource{
 
 type serialConfigResource struct{}
 
+type serialConfigSerialModel struct {
+	Baud   types.Int64  `tfsdk:"baud"`
+	Format types.String `tfsdk:"format"`
+	Hd     types.Bool   `tfsdk:"hd"`
+	DeAl   types.Bool   `tfsdk:"de_al"`
+}
+
+type serialConfigMbServerModel struct {
+	Addr types.Int64 `tfsdk:"addr"`
+}
+
 type serialConfigResourceModel struct {
-	IP   types.String `tfsdk:"ip"`
-	ID   types.Int64  `tfsdk:"id"`
-	Mode types.String `tfsdk:"mode"`
+	IP       types.String               `tfsdk:"ip"`
+	ID       types.Int64                `tfsdk:"id"`
+	Mode     types.String               `tfsdk:"mode"`
+	Serial   *serialConfigSerialModel   `tfsdk:"serial"`
+	MbServer *serialConfigMbServerModel `tfsdk:"mb_server"`
 }
 
 func (r *serialConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -48,6 +64,50 @@ func (r *serialConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 				MarkdownDescription: "Operating mode for the serial port. Supported modes are listed in the modes attribute.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"serial": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"baud": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Baud rate",
+						PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+					},
+					"format": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "A 3-character string indicating the serial frame format to use, e.g. 8N1",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"hd": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Optional. Half-duplex mode. Only present on devices where the underlying hardware supports it. true = enabled, false = disabled.",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"de_al": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Optional. Driver Enable (DE) active level. Only present on devices where the underlying hardware supports it. true = active high, false = active low.",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+				},
+			},
+			"mb_server": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"addr": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "RTU Server Address, between 1 and 247",
+						PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 		},
 	}
 }
@@ -61,7 +121,7 @@ func (r *serialConfigResource) Read(ctx context.Context, req resource.ReadReques
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.SerialGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.SerialGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -69,20 +129,71 @@ func (r *serialConfigResource) Read(ctx context.Context, req resource.ReadReques
 	if got.Mode != nil {
 		state.Mode = types.StringValue(*got.Mode)
 	}
+	if got.Serial != nil {
+		if state.Serial == nil {
+			state.Serial = &serialConfigSerialModel{}
+		}
+		if got.Serial.Baud != nil {
+			state.Serial.Baud = types.Int64Value(int64(*got.Serial.Baud))
+		}
+		if got.Serial.Format != nil {
+			state.Serial.Format = types.StringValue(*got.Serial.Format)
+		}
+		if got.Serial.Hd != nil {
+			state.Serial.Hd = types.BoolValue(*got.Serial.Hd)
+		}
+		if got.Serial.DeAl != nil {
+			state.Serial.DeAl = types.BoolValue(*got.Serial.DeAl)
+		}
+	}
+	if got.MbServer != nil {
+		if state.MbServer == nil {
+			state.MbServer = &serialConfigMbServerModel{}
+		}
+		if got.MbServer.Addr != nil {
+			state.MbServer.Addr = types.Int64Value(int64(*got.MbServer.Addr))
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *serialConfigResource) apply(plan serialConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.SerialConfig
+	var cfg components.SerialConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Mode.IsNull() && !plan.Mode.IsUnknown() {
 		v := plan.Mode.ValueString()
 		cfg.Mode = &v
 	}
+	if plan.Serial != nil {
+		cfg.Serial = &components.SerialConfigSerial{}
+		if !plan.Serial.Baud.IsNull() && !plan.Serial.Baud.IsUnknown() {
+			v := int(plan.Serial.Baud.ValueInt64())
+			cfg.Serial.Baud = &v
+		}
+		if !plan.Serial.Format.IsNull() && !plan.Serial.Format.IsUnknown() {
+			v := plan.Serial.Format.ValueString()
+			cfg.Serial.Format = &v
+		}
+		if !plan.Serial.Hd.IsNull() && !plan.Serial.Hd.IsUnknown() {
+			v := plan.Serial.Hd.ValueBool()
+			cfg.Serial.Hd = &v
+		}
+		if !plan.Serial.DeAl.IsNull() && !plan.Serial.DeAl.IsUnknown() {
+			v := plan.Serial.DeAl.ValueBool()
+			cfg.Serial.DeAl = &v
+		}
+	}
+	if plan.MbServer != nil {
+		cfg.MbServer = &components.SerialConfigMbServer{}
+		if !plan.MbServer.Addr.IsNull() && !plan.MbServer.Addr.IsUnknown() {
+			v := int(plan.MbServer.Addr.ValueInt64())
+			cfg.MbServer.Addr = &v
+		}
+	}
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.SerialSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.SerialSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

@@ -5,7 +5,7 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -31,25 +32,47 @@ func NewLightConfigResource() resource.Resource { return &lightConfigResource{} 
 
 type lightConfigResource struct{}
 
+type lightConfigNightModeModel struct {
+	Enable     types.Bool    `tfsdk:"enable"`
+	Brightness types.Float64 `tfsdk:"brightness"`
+}
+
+type lightConfigButtonPresetsButtonDoublepushModel struct {
+	Brightness types.Float64 `tfsdk:"brightness"`
+}
+
+type lightConfigButtonPresetsModel struct {
+	ButtonDoublepush *lightConfigButtonPresetsButtonDoublepushModel `tfsdk:"button_doublepush"`
+}
+
+type lightConfigWarmupModel struct {
+	Enable     types.Bool    `tfsdk:"enable"`
+	Brightness types.Float64 `tfsdk:"brightness"`
+	TimeMs     types.Float64 `tfsdk:"time_ms"`
+}
+
 type lightConfigResourceModel struct {
-	IP                    types.String  `tfsdk:"ip"`
-	ID                    types.Int64   `tfsdk:"id"`
-	Name                  types.String  `tfsdk:"name"`
-	InMode                types.String  `tfsdk:"in_mode"`
-	OpMode                types.Float64 `tfsdk:"op_mode"`
-	InitialState          types.String  `tfsdk:"initial_state"`
-	AutoOn                types.Bool    `tfsdk:"auto_on"`
-	AutoOnDelay           types.Float64 `tfsdk:"auto_on_delay"`
-	AutoOff               types.Bool    `tfsdk:"auto_off"`
-	AutoOffDelay          types.Float64 `tfsdk:"auto_off_delay"`
-	TransitionDuration    types.Float64 `tfsdk:"transition_duration"`
-	Gamma                 types.Float64 `tfsdk:"gamma"`
-	MinBrightnessOnToggle types.Float64 `tfsdk:"min_brightness_on_toggle"`
-	ButtonFadeRate        types.Float64 `tfsdk:"button_fade_rate"`
-	PowerLimit            types.Float64 `tfsdk:"power_limit"`
-	VoltageLimit          types.Float64 `tfsdk:"voltage_limit"`
-	UndervoltageLimit     types.Float64 `tfsdk:"undervoltage_limit"`
-	CurrentLimit          types.Float64 `tfsdk:"current_limit"`
+	IP                    types.String                   `tfsdk:"ip"`
+	ID                    types.Int64                    `tfsdk:"id"`
+	Name                  types.String                   `tfsdk:"name"`
+	InMode                types.String                   `tfsdk:"in_mode"`
+	OpMode                types.Float64                  `tfsdk:"op_mode"`
+	InitialState          types.String                   `tfsdk:"initial_state"`
+	AutoOn                types.Bool                     `tfsdk:"auto_on"`
+	AutoOnDelay           types.Float64                  `tfsdk:"auto_on_delay"`
+	AutoOff               types.Bool                     `tfsdk:"auto_off"`
+	AutoOffDelay          types.Float64                  `tfsdk:"auto_off_delay"`
+	TransitionDuration    types.Float64                  `tfsdk:"transition_duration"`
+	Gamma                 types.Float64                  `tfsdk:"gamma"`
+	MinBrightnessOnToggle types.Float64                  `tfsdk:"min_brightness_on_toggle"`
+	NightMode             *lightConfigNightModeModel     `tfsdk:"night_mode"`
+	ButtonFadeRate        types.Float64                  `tfsdk:"button_fade_rate"`
+	ButtonPresets         *lightConfigButtonPresetsModel `tfsdk:"button_presets"`
+	PowerLimit            types.Float64                  `tfsdk:"power_limit"`
+	VoltageLimit          types.Float64                  `tfsdk:"voltage_limit"`
+	UndervoltageLimit     types.Float64                  `tfsdk:"undervoltage_limit"`
+	CurrentLimit          types.Float64                  `tfsdk:"current_limit"`
+	Warmup                *lightConfigWarmupModel        `tfsdk:"warmup"`
 }
 
 func (r *lightConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -129,11 +152,50 @@ func (r *lightConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				MarkdownDescription: "Brightness level (in percent) applied when there is a toggle and current brightness is lower than min_brightness_on_toggle.",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"night_mode": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"enable": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Enable or disable night mode",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"brightness": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Brightness level limit when night mode is active. Default value 50.",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 			"button_fade_rate": schema.Float64Attribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Controls how quickly the output level changes while a button is held down for dimming (if applicable). Default value 3. Range [1,5] where 5 is fastest, 1 is slowest",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+			},
+			"button_presets": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"button_doublepush": schema.SingleNestedAttribute{
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+						Attributes: map[string]schema.Attribute{
+							"brightness": schema.Float64Attribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Brightness level (in percent) set on double click (if applicable), default: 100",
+								PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+							},
+						},
+					},
+				},
 			},
 			"power_limit": schema.Float64Attribute{
 				Optional:            true,
@@ -159,6 +221,31 @@ func (r *lightConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				MarkdownDescription: "Limit (in Amperes) over which overcurrent condition occurs (shown if applicable). For PlusRGBWPM shown if device is calibrated.",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"warmup": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"enable": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "When enabled warmup is applied on toogle from off to on and brightness below 10%.",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"brightness": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Warmup brightness in percent. Range 10-100%.",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"time_ms": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Time period during which warmup_brightness will be on. Range 20-1000 milliseconds.",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 		},
 	}
 }
@@ -172,7 +259,7 @@ func (r *lightConfigResource) Read(ctx context.Context, req resource.ReadRequest
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.LightGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.LightGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -210,8 +297,32 @@ func (r *lightConfigResource) Read(ctx context.Context, req resource.ReadRequest
 	if got.MinBrightnessOnToggle != nil {
 		state.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
 	}
+	if got.NightMode != nil {
+		if state.NightMode == nil {
+			state.NightMode = &lightConfigNightModeModel{}
+		}
+		if got.NightMode.Enable != nil {
+			state.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		}
+		if got.NightMode.Brightness != nil {
+			state.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		}
+	}
 	if got.ButtonFadeRate != nil {
 		state.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
+	}
+	if got.ButtonPresets != nil {
+		if state.ButtonPresets == nil {
+			state.ButtonPresets = &lightConfigButtonPresetsModel{}
+		}
+		if got.ButtonPresets.ButtonDoublepush != nil {
+			if state.ButtonPresets.ButtonDoublepush == nil {
+				state.ButtonPresets.ButtonDoublepush = &lightConfigButtonPresetsButtonDoublepushModel{}
+			}
+			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
+				state.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
+			}
+		}
 	}
 	if got.PowerLimit != nil {
 		state.PowerLimit = types.Float64Value(*got.PowerLimit)
@@ -225,11 +336,25 @@ func (r *lightConfigResource) Read(ctx context.Context, req resource.ReadRequest
 	if got.CurrentLimit != nil {
 		state.CurrentLimit = types.Float64Value(*got.CurrentLimit)
 	}
+	if got.Warmup != nil {
+		if state.Warmup == nil {
+			state.Warmup = &lightConfigWarmupModel{}
+		}
+		if got.Warmup.Enable != nil {
+			state.Warmup.Enable = types.BoolValue(*got.Warmup.Enable)
+		}
+		if got.Warmup.Brightness != nil {
+			state.Warmup.Brightness = types.Float64Value(*got.Warmup.Brightness)
+		}
+		if got.Warmup.TimeMs != nil {
+			state.Warmup.TimeMs = types.Float64Value(*got.Warmup.TimeMs)
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *lightConfigResource) apply(plan lightConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.LightConfig
+	var cfg components.LightConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
@@ -275,9 +400,30 @@ func (r *lightConfigResource) apply(plan lightConfigResourceModel, diags *diag.D
 		v := plan.MinBrightnessOnToggle.ValueFloat64()
 		cfg.MinBrightnessOnToggle = &v
 	}
+	if plan.NightMode != nil {
+		cfg.NightMode = &components.LightConfigNightMode{}
+		if !plan.NightMode.Enable.IsNull() && !plan.NightMode.Enable.IsUnknown() {
+			v := plan.NightMode.Enable.ValueBool()
+			cfg.NightMode.Enable = &v
+		}
+		if !plan.NightMode.Brightness.IsNull() && !plan.NightMode.Brightness.IsUnknown() {
+			v := plan.NightMode.Brightness.ValueFloat64()
+			cfg.NightMode.Brightness = &v
+		}
+	}
 	if !plan.ButtonFadeRate.IsNull() && !plan.ButtonFadeRate.IsUnknown() {
 		v := plan.ButtonFadeRate.ValueFloat64()
 		cfg.ButtonFadeRate = &v
+	}
+	if plan.ButtonPresets != nil {
+		cfg.ButtonPresets = &components.LightConfigButtonPresets{}
+		if plan.ButtonPresets.ButtonDoublepush != nil {
+			cfg.ButtonPresets.ButtonDoublepush = &components.LightConfigButtonPresetsButtonDoublepush{}
+			if !plan.ButtonPresets.ButtonDoublepush.Brightness.IsNull() && !plan.ButtonPresets.ButtonDoublepush.Brightness.IsUnknown() {
+				v := plan.ButtonPresets.ButtonDoublepush.Brightness.ValueFloat64()
+				cfg.ButtonPresets.ButtonDoublepush.Brightness = &v
+			}
+		}
 	}
 	if !plan.PowerLimit.IsNull() && !plan.PowerLimit.IsUnknown() {
 		v := plan.PowerLimit.ValueFloat64()
@@ -295,10 +441,25 @@ func (r *lightConfigResource) apply(plan lightConfigResourceModel, diags *diag.D
 		v := plan.CurrentLimit.ValueFloat64()
 		cfg.CurrentLimit = &v
 	}
+	if plan.Warmup != nil {
+		cfg.Warmup = &components.LightConfigWarmup{}
+		if !plan.Warmup.Enable.IsNull() && !plan.Warmup.Enable.IsUnknown() {
+			v := plan.Warmup.Enable.ValueBool()
+			cfg.Warmup.Enable = &v
+		}
+		if !plan.Warmup.Brightness.IsNull() && !plan.Warmup.Brightness.IsUnknown() {
+			v := plan.Warmup.Brightness.ValueFloat64()
+			cfg.Warmup.Brightness = &v
+		}
+		if !plan.Warmup.TimeMs.IsNull() && !plan.Warmup.TimeMs.IsUnknown() {
+			v := plan.Warmup.TimeMs.ValueFloat64()
+			cfg.Warmup.TimeMs = &v
+		}
+	}
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.LightSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.LightSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

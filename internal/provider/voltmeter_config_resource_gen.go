@@ -5,12 +5,13 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,12 +29,18 @@ func NewVoltmeterConfigResource() resource.Resource { return &voltmeterConfigRes
 
 type voltmeterConfigResource struct{}
 
+type voltmeterConfigXvoltageModel struct {
+	Expr types.String `tfsdk:"expr"`
+	Unit types.String `tfsdk:"unit"`
+}
+
 type voltmeterConfigResourceModel struct {
-	IP        types.String  `tfsdk:"ip"`
-	ID        types.Int64   `tfsdk:"id"`
-	Name      types.String  `tfsdk:"name"`
-	ReportThr types.Float64 `tfsdk:"report_thr"`
-	Range     types.Float64 `tfsdk:"range"`
+	IP        types.String                  `tfsdk:"ip"`
+	ID        types.Int64                   `tfsdk:"id"`
+	Name      types.String                  `tfsdk:"name"`
+	ReportThr types.Float64                 `tfsdk:"report_thr"`
+	Range     types.Float64                 `tfsdk:"range"`
+	Xvoltage  *voltmeterConfigXvoltageModel `tfsdk:"xvoltage"`
 }
 
 func (r *voltmeterConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -63,6 +70,25 @@ func (r *voltmeterConfigResource) Schema(_ context.Context, _ resource.SchemaReq
 				MarkdownDescription: "Input range, which is device-specific. See the table below.",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"xvoltage": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"expr": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "JS expression containg x, where x is the raw value to be transformed (status.voltage), for example \"x+1\". Accepted range: null or [0..100] chars. Both null and \"\" mean value transformation is disabled.",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"unit": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Unit of the transformed value (status.xvoltage), for example \"m/s\". Accepted range: null or [0..20] chars. Both null and \"\" mean value transformation is disabled.",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 		},
 	}
 }
@@ -76,7 +102,7 @@ func (r *voltmeterConfigResource) Read(ctx context.Context, req resource.ReadReq
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.VoltmeterGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.VoltmeterGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -90,11 +116,22 @@ func (r *voltmeterConfigResource) Read(ctx context.Context, req resource.ReadReq
 	if got.Range != nil {
 		state.Range = types.Float64Value(*got.Range)
 	}
+	if got.Xvoltage != nil {
+		if state.Xvoltage == nil {
+			state.Xvoltage = &voltmeterConfigXvoltageModel{}
+		}
+		if got.Xvoltage.Expr != nil {
+			state.Xvoltage.Expr = types.StringValue(*got.Xvoltage.Expr)
+		}
+		if got.Xvoltage.Unit != nil {
+			state.Xvoltage.Unit = types.StringValue(*got.Xvoltage.Unit)
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *voltmeterConfigResource) apply(plan voltmeterConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.VoltmeterConfig
+	var cfg components.VoltmeterConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
@@ -108,10 +145,21 @@ func (r *voltmeterConfigResource) apply(plan voltmeterConfigResourceModel, diags
 		v := plan.Range.ValueFloat64()
 		cfg.Range = &v
 	}
+	if plan.Xvoltage != nil {
+		cfg.Xvoltage = &components.VoltmeterConfigXvoltage{}
+		if !plan.Xvoltage.Expr.IsNull() && !plan.Xvoltage.Expr.IsUnknown() {
+			v := plan.Xvoltage.Expr.ValueString()
+			cfg.Xvoltage.Expr = &v
+		}
+		if !plan.Xvoltage.Unit.IsNull() && !plan.Xvoltage.Unit.IsUnknown() {
+			v := plan.Xvoltage.Unit.ValueString()
+			cfg.Xvoltage.Unit = &v
+		}
+	}
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.VoltmeterSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.VoltmeterSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

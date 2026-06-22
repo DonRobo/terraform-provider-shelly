@@ -5,11 +5,12 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,9 +29,11 @@ func NewTemperatureConfigResource() resource.Resource { return &temperatureConfi
 type temperatureConfigResource struct{}
 
 type temperatureConfigResourceModel struct {
-	IP   types.String `tfsdk:"ip"`
-	ID   types.Int64  `tfsdk:"id"`
-	Name types.String `tfsdk:"name"`
+	IP         types.String  `tfsdk:"ip"`
+	ID         types.Int64   `tfsdk:"id"`
+	Name       types.String  `tfsdk:"name"`
+	ReportThrC types.Float64 `tfsdk:"report_thr_c"`
+	OffsetC    types.Float64 `tfsdk:"offset_c"`
 }
 
 func (r *temperatureConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -48,6 +51,18 @@ func (r *temperatureConfigResource) Schema(_ context.Context, _ resource.SchemaR
 				MarkdownDescription: "Name of the Temperature instance. name length should not exceed 64 chars",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"report_thr_c": schema.Float64Attribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Temperature report threshold in Celsius. Accepted range is device-specific, default [0.5..5.0]C unless specified otherwise",
+				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+			},
+			"offset_c": schema.Float64Attribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Offset in Celsius to be applied to the measured temperature. Accepted range is device-specific, default [-50.0 .. 50.0] unless specified otherwise",
+				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
@@ -61,7 +76,7 @@ func (r *temperatureConfigResource) Read(ctx context.Context, req resource.ReadR
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.TemperatureGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.TemperatureGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -69,20 +84,34 @@ func (r *temperatureConfigResource) Read(ctx context.Context, req resource.ReadR
 	if got.Name != nil {
 		state.Name = types.StringValue(*got.Name)
 	}
+	if got.ReportThrC != nil {
+		state.ReportThrC = types.Float64Value(*got.ReportThrC)
+	}
+	if got.OffsetC != nil {
+		state.OffsetC = types.Float64Value(*got.OffsetC)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *temperatureConfigResource) apply(plan temperatureConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.TemperatureConfig
+	var cfg components.TemperatureConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
 		cfg.Name = &v
 	}
+	if !plan.ReportThrC.IsNull() && !plan.ReportThrC.IsUnknown() {
+		v := plan.ReportThrC.ValueFloat64()
+		cfg.ReportThrC = &v
+	}
+	if !plan.OffsetC.IsNull() && !plan.OffsetC.IsUnknown() {
+		v := plan.OffsetC.ValueFloat64()
+		cfg.OffsetC = &v
+	}
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.TemperatureSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.TemperatureSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

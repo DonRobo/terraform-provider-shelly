@@ -1,10 +1,14 @@
 // Command gen emits Terraform resources from the shelly-go IR.
 //
-// For every Shelly component that has a generated library config (so its Go
-// field names match the IR) and a SetConfig method, it writes a
-// shelly_<component>_config resource exposing the scalar configuration fields.
-// Components already implemented by hand (Switch, Input, Sys) are skipped, as
-// are object/array fields (deferred to the exceptions layer).
+// For every Shelly component that exposes SetConfig it writes a
+// shelly_<component>_config resource covering the component's configuration:
+// scalar fields become typed attributes and nested objects become
+// SingleNestedAttribute blocks mirroring the library's nested config structs.
+// Array fields are not yet represented (a follow-up).
+//
+// The whole client is generated, so there is no hand-written code to skip: a
+// hand-written resource defining the same New<Prefix>ConfigResource would
+// collide at build time, which is the intended signal to delete it.
 //
 //	go run ./internal/provider/gen   (or: go generate ./...)
 package main
@@ -13,9 +17,7 @@ import (
 	"fmt"
 	"go/format"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -28,35 +30,26 @@ func main() {
 	spec, err := gen.Load()
 	check(err)
 
-	libDir, err := libraryDir()
-	check(err)
-
-	handWritten, err := handWrittenResources(outDir)
-	check(err)
 	check(removeGenerated(outDir))
 
 	var generated []string
 	for _, c := range spec.Components {
+		if c.Name == "Shelly" {
+			continue // the Shelly service is the aggregate, not a config component
+		}
 		if !c.HasSetConfig {
 			continue
 		}
-		// Only target components whose library config is generated: that
-		// guarantees shelly.<Prefix>Config and its fields exist with IR names.
-		if !fileExists(filepath.Join(libDir, strings.ToLower(c.Name)+"_config_gen.go")) {
-			continue
+		root := buildTree(c)
+		if len(root.order) == 0 {
+			continue // nothing representable (only id/ip, arrays, or opaque objects)
 		}
-		if handWritten[strings.ToLower(c.Prefix())] {
-			continue
-		}
-		fields := scalarFields(c)
-		if len(fields) == 0 {
-			continue
-		}
-		src, err := emitResource(c, fields)
+		src, err := emitResource(c, root)
 		if err != nil {
 			check(fmt.Errorf("emit %s: %w", c.Name, err))
 		}
-		check(os.WriteFile(filepath.Join(outDir, strings.ToLower(c.Name)+"_config_resource_gen.go"), src, 0o644))
+		dst := filepath.Join(outDir, strings.ToLower(c.Name)+"_config_resource_gen.go")
+		check(os.WriteFile(dst, src, 0o644))
 		generated = append(generated, c.Prefix())
 	}
 
@@ -66,67 +59,76 @@ func main() {
 	fmt.Fprintf(os.Stderr, "generated %d config resources: %s\n", len(generated), strings.Join(generated, ", "))
 }
 
-// scalarField is a config field the provider exposes as a simple attribute.
-type scalarField struct {
-	Key    string // json key (also tfsdk + attribute name)
-	GoName string // Go field on the library config struct
-	Type   string // IR base type: string|number|integer|boolean
-	Enum   []string
-	Desc   string
+// --- config field tree -------------------------------------------------------
+
+// tnode is a node in the config tree: a leaf carries a scalar field; an internal
+// node is a nested object. Only scalar leaves (and their ancestors) are kept, so
+// every internal node is guaranteed to have a representable descendant.
+type tnode struct {
+	seg      string
+	field    *gen.Field // non-nil for leaves
+	order    []string
+	children map[string]*tnode
 }
 
-// scalarFields returns the top-level scalar config fields, excluding the
-// identity keys (id is handled separately, ip is the device address).
-func scalarFields(c *gen.Component) []scalarField {
-	var out []scalarField
+func newTnode(seg string) *tnode {
+	return &tnode{seg: seg, children: map[string]*tnode{}}
+}
+
+func (n *tnode) child(seg string) *tnode {
+	c, ok := n.children[seg]
+	if !ok {
+		c = newTnode(seg)
+		n.children[seg] = c
+		n.order = append(n.order, seg)
+	}
+	return c
+}
+
+func (n *tnode) leaf() bool { return n.field != nil }
+
+// buildTree builds the config tree from a component's fields, keeping only scalar
+// leaves (string/number/integer/boolean) and dropping the identity keys, arrays
+// and opaque objects. Intermediate objects appear via the dotted key segments.
+func buildTree(c *gen.Component) *tnode {
+	root := newTnode("")
 	for _, f := range c.Fields {
-		if strings.Contains(f.Key, ".") || f.Key == "id" || f.Key == "ip" {
+		if f.Key == "id" || f.Key == "ip" {
 			continue
 		}
-		switch f.Type {
-		case "string", "number", "integer", "boolean":
-			out = append(out, scalarField{f.Key, gen.GoName(f.Key), f.Type, f.Enum, f.Description})
+		if !scalar(f.Type) {
+			continue // array / object-leaf / unknown — not representable yet
+		}
+		cur := root
+		segs := strings.Split(f.Key, ".")
+		for i, s := range segs {
+			cur = cur.child(s)
+			if i == len(segs)-1 {
+				cur.field = f
+			}
 		}
 	}
-	return out
+	return root
 }
 
-// typeInfo maps an IR scalar type to its Terraform plumbing.
-type typeInfo struct {
-	Model   string // types.String
-	Attr    string // schema.StringAttribute
-	PlanPkg string // stringplanmodifier
-	PlanKnd string // String
-	read    string // template using %[1]s = Go field name
-	set     string
-}
-
-func info(t string) typeInfo {
+func scalar(t string) bool {
 	switch t {
-	case "boolean":
-		return typeInfo{"types.Bool", "schema.BoolAttribute", "boolplanmodifier", "Bool",
-			"types.BoolValue(*got.%[1]s)", "v := plan.%[1]s.ValueBool(); cfg.%[1]s = &v"}
-	case "number":
-		return typeInfo{"types.Float64", "schema.Float64Attribute", "float64planmodifier", "Float64",
-			"types.Float64Value(*got.%[1]s)", "v := plan.%[1]s.ValueFloat64(); cfg.%[1]s = &v"}
-	case "integer":
-		return typeInfo{"types.Int64", "schema.Int64Attribute", "int64planmodifier", "Int64",
-			"types.Int64Value(int64(*got.%[1]s))", "v := int(plan.%[1]s.ValueInt64()); cfg.%[1]s = &v"}
-	default:
-		return typeInfo{"types.String", "schema.StringAttribute", "stringplanmodifier", "String",
-			"types.StringValue(*got.%[1]s)", "v := plan.%[1]s.ValueString(); cfg.%[1]s = &v"}
+	case "string", "number", "integer", "boolean":
+		return true
 	}
+	return false
 }
 
-func emitResource(c *gen.Component, fields []scalarField) ([]byte, error) {
+// --- emission ----------------------------------------------------------------
+
+func emitResource(c *gen.Component, root *tnode) ([]byte, error) {
 	prefix := c.Prefix()
 	lower := strings.ToLower(c.Name)
 	typeName := lower + "ConfigResource"
-	model := lower + "ConfigResourceModel"
 
 	imp := newImports(
 		"context",
-		"github.com/DonRobo/shelly-go",
+		"github.com/DonRobo/shelly-go/components",
 		"github.com/hashicorp/terraform-plugin-framework/diag",
 		"github.com/hashicorp/terraform-plugin-framework/path",
 		"github.com/hashicorp/terraform-plugin-framework/resource",
@@ -147,21 +149,13 @@ func emitResource(c *gen.Component, fields []scalarField) ([]byte, error) {
 	fmt.Fprintf(&b, "func New%sConfigResource() resource.Resource { return &%s{} }\n\n", prefix, typeName)
 	fmt.Fprintf(&b, "type %s struct{}\n\n", typeName)
 
-	// model struct
-	fmt.Fprintf(&b, "type %s struct {\n\tIP types.String `tfsdk:\"ip\"`\n", model)
-	if c.Keyed {
-		b.WriteString("\tID types.Int64 `tfsdk:\"id\"`\n")
-	}
-	for _, f := range fields {
-		fmt.Fprintf(&b, "\t%s %s `tfsdk:%q`\n", f.GoName, info(f.Type).Model, f.Key)
-	}
-	b.WriteString("}\n\n")
+	emitModels(&b, lower, c, root)
 
 	fmt.Fprintf(&b, "func (r *%s) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {\n\tresp.TypeName = req.ProviderTypeName + %q\n}\n\n", typeName, "_"+lower+"_config")
 
-	emitSchema(&b, typeName, c, fields, imp)
-	emitRead(&b, typeName, model, c, fields)
-	emitWrite(&b, typeName, model, c, fields)
+	emitSchema(&b, typeName, c, root, imp)
+	emitRead(&b, typeName, lower, c, root)
+	emitWrite(&b, typeName, lower, c, root)
 	fmt.Fprintf(&b, "func (r *%s) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {\n\tresp.State.RemoveResource(ctx)\n}\n\n", typeName)
 	emitImportState(&b, typeName, c)
 
@@ -173,16 +167,105 @@ func emitResource(c *gen.Component, fields []scalarField) ([]byte, error) {
 	return out, nil
 }
 
-func emitSchema(b *strings.Builder, typeName string, c *gen.Component, fields []scalarField, imp *imports) {
+// modelType returns the Go model type for the node at path. The root is the
+// resource model; nested objects get <lower>Config<Seg...>Model, mirroring the
+// library's <Prefix>Config<Seg...> nesting.
+func modelType(lower string, path []string) string {
+	if len(path) == 0 {
+		return lower + "ConfigResourceModel"
+	}
+	return lower + "Config" + goNamePath(path) + "Model"
+}
+
+// libType returns the library config struct type for the object node at path,
+// e.g. SysConfigDevice for prefix "Sys" and path ["device"].
+func libType(prefix string, path []string) string {
+	return prefix + "Config" + goNamePath(path)
+}
+
+// attrName is the Terraform attribute name for a JSON key segment. Terraform
+// requires lowercase [a-z0-9_]; a few Shelly config keys carry an uppercase unit
+// suffix (report_thr_C, offset_C), so lower-case the segment. The Go field name
+// (GoName) is unaffected, so the mapping to the library struct still lines up.
+func attrName(seg string) string { return strings.ToLower(seg) }
+
+func goNamePath(path []string) string {
+	var b strings.Builder
+	for _, s := range path {
+		b.WriteString(gen.GoName(s))
+	}
+	return b.String()
+}
+
+// child returns path with seg appended, copying so callers never share backing.
+func childPath(path []string, seg string) []string {
+	return append(append([]string{}, path...), seg)
+}
+
+// emitModels writes the nested object model structs (deepest first) and then the
+// root resource model.
+func emitModels(b *strings.Builder, lower string, c *gen.Component, root *tnode) {
+	emitNestedModels(b, lower, nil, root)
+
+	fmt.Fprintf(b, "type %s struct {\n\tIP types.String `tfsdk:\"ip\"`\n", modelType(lower, nil))
+	if c.Keyed {
+		b.WriteString("\tID types.Int64 `tfsdk:\"id\"`\n")
+	}
+	emitModelFields(b, lower, nil, root)
+	b.WriteString("}\n\n")
+}
+
+func emitNestedModels(b *strings.Builder, lower string, path []string, n *tnode) {
+	for _, seg := range n.order {
+		c := n.children[seg]
+		if c.leaf() {
+			continue
+		}
+		sub := childPath(path, seg)
+		emitNestedModels(b, lower, sub, c)
+		fmt.Fprintf(b, "type %s struct {\n", modelType(lower, sub))
+		emitModelFields(b, lower, sub, c)
+		b.WriteString("}\n\n")
+	}
+}
+
+func emitModelFields(b *strings.Builder, lower string, path []string, n *tnode) {
+	for _, seg := range n.order {
+		c := n.children[seg]
+		g := gen.GoName(seg)
+		if c.leaf() {
+			fmt.Fprintf(b, "\t%s %s `tfsdk:%q`\n", g, info(c.field.Type).Model, attrName(seg))
+			continue
+		}
+		sub := childPath(path, seg)
+		fmt.Fprintf(b, "\t%s *%s `tfsdk:%q`\n", g, modelType(lower, sub), attrName(seg))
+	}
+}
+
+func emitSchema(b *strings.Builder, typeName string, c *gen.Component, root *tnode, imp *imports) {
 	fmt.Fprintf(b, "func (r *%s) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {\n", typeName)
 	b.WriteString("\tresp.Schema = schema.Schema{\n\t\tAttributes: map[string]schema.Attribute{\n")
 	b.WriteString("\t\t\t\"ip\": schema.StringAttribute{Required: true, MarkdownDescription: \"The IP address of the Shelly device.\"},\n")
 	if c.Keyed {
 		fmt.Fprintf(b, "\t\t\t\"id\": schema.Int64Attribute{Required: true, MarkdownDescription: \"The ID of the %s component instance.\"},\n", c.Name)
 	}
-	for _, f := range fields {
+	emitSchemaAttrs(b, root, imp)
+	b.WriteString("\t\t},\n\t}\n}\n\n")
+}
+
+func emitSchemaAttrs(b *strings.Builder, n *tnode, imp *imports) {
+	for _, seg := range n.order {
+		c := n.children[seg]
+		if !c.leaf() {
+			imp.add("github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier")
+			fmt.Fprintf(b, "%q: schema.SingleNestedAttribute{\nOptional: true,\nComputed: true,\nPlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},\nAttributes: map[string]schema.Attribute{\n", attrName(seg))
+			emitSchemaAttrs(b, c, imp)
+			b.WriteString("},\n},\n")
+			continue
+		}
+		f := c.field
 		ti := info(f.Type)
-		fmt.Fprintf(b, "\t\t\t%q: %s{\n\t\t\t\tOptional: true,\n\t\t\t\tComputed: true,\n\t\t\t\tMarkdownDescription: %q,\n", f.Key, ti.Attr, f.Desc)
+		fmt.Fprintf(b, "%q: %s{\nOptional: true,\nComputed: true,\nMarkdownDescription: %q,\n", attrName(seg), ti.Attr, f.Description)
 		if f.Type == "string" && len(f.Enum) > 0 {
 			imp.add("github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator",
 				"github.com/hashicorp/terraform-plugin-framework/schema/validator")
@@ -190,51 +273,80 @@ func emitSchema(b *strings.Builder, typeName string, c *gen.Component, fields []
 			for i, e := range f.Enum {
 				quoted[i] = fmt.Sprintf("%q", e)
 			}
-			fmt.Fprintf(b, "\t\t\t\tValidators: []validator.String{stringvalidator.OneOf(%s)},\n", strings.Join(quoted, ", "))
+			fmt.Fprintf(b, "Validators: []validator.String{stringvalidator.OneOf(%s)},\n", strings.Join(quoted, ", "))
 		}
 		imp.add("github.com/hashicorp/terraform-plugin-framework/resource/schema/" + ti.PlanPkg)
-		fmt.Fprintf(b, "\t\t\t\tPlanModifiers: []planmodifier.%s{%s.UseStateForUnknown()},\n\t\t\t},\n", ti.PlanKnd, ti.PlanPkg)
+		fmt.Fprintf(b, "PlanModifiers: []planmodifier.%s{%s.UseStateForUnknown()},\n},\n", ti.PlanKnd, ti.PlanPkg)
 	}
-	b.WriteString("\t\t},\n\t}\n}\n\n")
 }
 
-func emitRead(b *strings.Builder, typeName, model string, c *gen.Component, fields []scalarField) {
-	fmt.Fprintf(b, "func (r *%s) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {\n\tvar state %s\n", typeName, model)
+func emitRead(b *strings.Builder, typeName, lower string, c *gen.Component, root *tnode) {
+	fmt.Fprintf(b, "func (r *%s) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {\n\tvar state %s\n", typeName, modelType(lower, nil))
 	b.WriteString("\tresp.Diagnostics.Append(req.State.Get(ctx, &state)...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
 	b.WriteString("\tclient := resty.New()\n\tdefer client.Close()\n\tclient.SetBaseURL(\"http://\" + state.IP.ValueString())\n")
 	if c.Keyed {
-		fmt.Fprintf(b, "\tgot, _, err := (&shelly.%sGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)\n", c.Prefix())
+		fmt.Fprintf(b, "\tgot, _, err := (&components.%sGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)\n", c.Prefix())
 	} else {
-		fmt.Fprintf(b, "\tgot, _, err := (&shelly.%sGetConfigRequest{}).Do(client)\n", c.Prefix())
+		fmt.Fprintf(b, "\tgot, _, err := (&components.%sGetConfigRequest{}).Do(client)\n", c.Prefix())
 	}
 	b.WriteString("\tif err != nil {\n\t\tresp.Diagnostics.AddError(\"Failed to read config\", err.Error())\n\t\treturn\n\t}\n")
-	for _, f := range fields {
-		fmt.Fprintf(b, "\tif got.%s != nil {\n\t\tstate.%s = %s\n\t}\n", f.GoName, f.GoName, fmt.Sprintf(info(f.Type).read, f.GoName))
-	}
+	emitReadNode(b, lower, "got", "state", nil, root)
 	b.WriteString("\tresp.Diagnostics.Append(resp.State.Set(ctx, &state)...)\n}\n\n")
 }
 
-func emitWrite(b *strings.Builder, typeName, model string, c *gen.Component, fields []scalarField) {
-	fmt.Fprintf(b, "func (r *%s) apply(plan %s, diags *diag.Diagnostics) {\n\tvar cfg shelly.%sConfig\n", typeName, model, c.Prefix())
+func emitReadNode(b *strings.Builder, lower, got, state string, path []string, n *tnode) {
+	for _, seg := range n.order {
+		c := n.children[seg]
+		g := gen.GoName(seg)
+		if c.leaf() {
+			fmt.Fprintf(b, "\tif %s.%s != nil {\n\t\t%s.%s = %s\n\t}\n", got, g, state, g, readConv(c.field.Type, got+"."+g))
+			continue
+		}
+		sub := childPath(path, seg)
+		cg, cs := got+"."+g, state+"."+g
+		fmt.Fprintf(b, "\tif %s != nil {\n", cg)
+		fmt.Fprintf(b, "\t\tif %s == nil {\n\t\t\t%s = &%s{}\n\t\t}\n", cs, cs, modelType(lower, sub))
+		emitReadNode(b, lower, cg, cs, sub, c)
+		b.WriteString("\t}\n")
+	}
+}
+
+func emitWrite(b *strings.Builder, typeName, lower string, c *gen.Component, root *tnode) {
+	fmt.Fprintf(b, "func (r *%s) apply(plan %s, diags *diag.Diagnostics) {\n\tvar cfg components.%sConfig\n", typeName, modelType(lower, nil), c.Prefix())
 	if c.Keyed {
 		b.WriteString("\tcfg.ID = int(plan.ID.ValueInt64())\n")
 	}
-	for _, f := range fields {
-		fmt.Fprintf(b, "\tif !plan.%s.IsNull() && !plan.%s.IsUnknown() {\n\t\t%s\n\t}\n", f.GoName, f.GoName, fmt.Sprintf(info(f.Type).set, f.GoName))
-	}
+	emitWriteNode(b, c.Prefix(), "cfg", "plan", nil, root)
 	b.WriteString("\tclient := resty.New()\n\tdefer client.Close()\n\tclient.SetBaseURL(\"http://\" + plan.IP.ValueString())\n")
 	if c.Keyed {
-		fmt.Fprintf(b, "\tif _, _, err := (&shelly.%sSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {\n", c.Prefix())
+		fmt.Fprintf(b, "\tif _, _, err := (&components.%sSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {\n", c.Prefix())
 	} else {
-		fmt.Fprintf(b, "\tif _, _, err := (&shelly.%sSetConfigRequest{Config: cfg}).Do(client); err != nil {\n", c.Prefix())
+		fmt.Fprintf(b, "\tif _, _, err := (&components.%sSetConfigRequest{Config: cfg}).Do(client); err != nil {\n", c.Prefix())
 	}
 	b.WriteString("\t\tdiags.AddError(\"Failed to set config\", err.Error())\n\t}\n}\n\n")
 
 	for _, op := range []string{"Create", "Update"} {
-		fmt.Fprintf(b, "func (r *%s) %s(ctx context.Context, req resource.%sRequest, resp *resource.%sResponse) {\n\tvar plan %s\n", typeName, op, op, op, model)
+		fmt.Fprintf(b, "func (r *%s) %s(ctx context.Context, req resource.%sRequest, resp *resource.%sResponse) {\n\tvar plan %s\n", typeName, op, op, op, modelType(lower, nil))
 		b.WriteString("\tresp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
 		b.WriteString("\tr.apply(plan, &resp.Diagnostics)\n\tif resp.Diagnostics.HasError() {\n\t\treturn\n\t}\n")
 		b.WriteString("\tresp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)\n}\n\n")
+	}
+}
+
+func emitWriteNode(b *strings.Builder, prefix, cfg, plan string, path []string, n *tnode) {
+	for _, seg := range n.order {
+		c := n.children[seg]
+		g := gen.GoName(seg)
+		if c.leaf() {
+			fmt.Fprintf(b, "\tif !%s.%s.IsNull() && !%s.%s.IsUnknown() {\n\t\t%s\n\t}\n", plan, g, plan, g, setStmt(c.field.Type, cfg+"."+g, plan+"."+g))
+			continue
+		}
+		sub := childPath(path, seg)
+		cc, cp := cfg+"."+g, plan+"."+g
+		fmt.Fprintf(b, "\tif %s != nil {\n", cp)
+		fmt.Fprintf(b, "\t\t%s = &components.%s{}\n", cc, libType(prefix, sub))
+		emitWriteNode(b, prefix, cc, cp, sub, c)
+		b.WriteString("\t}\n")
 	}
 }
 
@@ -246,6 +358,58 @@ func emitImportState(b *strings.Builder, typeName string, c *gen.Component) {
 		b.WriteString("\tresp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(\"ip\"), parts[0])...)\n\tresp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(\"id\"), id)...)\n}\n\n")
 	} else {
 		b.WriteString("\tresource.ImportStatePassthroughID(ctx, path.Root(\"ip\"), req, resp)\n}\n\n")
+	}
+}
+
+// --- scalar plumbing ---------------------------------------------------------
+
+// typeInfo maps an IR scalar type to its Terraform plumbing.
+type typeInfo struct {
+	Model   string // types.String
+	Attr    string // schema.StringAttribute
+	PlanPkg string // stringplanmodifier
+	PlanKnd string // String
+}
+
+func info(t string) typeInfo {
+	switch t {
+	case "boolean":
+		return typeInfo{"types.Bool", "schema.BoolAttribute", "boolplanmodifier", "Bool"}
+	case "number":
+		return typeInfo{"types.Float64", "schema.Float64Attribute", "float64planmodifier", "Float64"}
+	case "integer":
+		return typeInfo{"types.Int64", "schema.Int64Attribute", "int64planmodifier", "Int64"}
+	default:
+		return typeInfo{"types.String", "schema.StringAttribute", "stringplanmodifier", "String"}
+	}
+}
+
+// readConv renders the conversion from a library *T field (src) to a TF value.
+func readConv(t, src string) string {
+	switch t {
+	case "boolean":
+		return "types.BoolValue(*" + src + ")"
+	case "number":
+		return "types.Float64Value(*" + src + ")"
+	case "integer":
+		return "types.Int64Value(int64(*" + src + "))"
+	default:
+		return "types.StringValue(*" + src + ")"
+	}
+}
+
+// setStmt renders the statement assigning a TF value (src) into a library *T
+// field (dst). Each call lives in its own if-block, so the local v never clashes.
+func setStmt(t, dst, src string) string {
+	switch t {
+	case "boolean":
+		return "v := " + src + ".ValueBool(); " + dst + " = &v"
+	case "number":
+		return "v := " + src + ".ValueFloat64(); " + dst + " = &v"
+	case "integer":
+		return "v := int(" + src + ".ValueInt64()); " + dst + " = &v"
+	default:
+		return "v := " + src + ".ValueString(); " + dst + " = &v"
 	}
 }
 
@@ -298,30 +462,6 @@ func (i *imports) block() string {
 
 // --- misc helpers ------------------------------------------------------------
 
-var newResourceRe = regexp.MustCompile(`New(\w+?)ConfigResource`)
-
-func handWrittenResources(dir string) (map[string]bool, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	set := map[string]bool{}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_gen.go") {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range newResourceRe.FindAllSubmatch(b, -1) {
-			set[strings.ToLower(string(m[1]))] = true
-		}
-	}
-	return set, nil
-}
-
 func removeGenerated(dir string) error {
 	for _, pat := range []string{"*_config_resource_gen.go", "resources_gen.go"} {
 		matches, err := filepath.Glob(filepath.Join(dir, pat))
@@ -335,19 +475,6 @@ func removeGenerated(dir string) error {
 		}
 	}
 	return nil
-}
-
-func libraryDir() (string, error) {
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/DonRobo/shelly-go").Output()
-	if err != nil {
-		return "", fmt.Errorf("locate shelly-go: %w", err)
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
 }
 
 func check(err error) {

@@ -27,14 +27,51 @@ description: |-
 - `auto_on` (Boolean) True if the "Automatic ON" function is enabled, false otherwise
 - `auto_on_delay` (Number) Seconds to pass until the component is switched back on
 - `button_fade_rate` (Number) Controls how quickly the output level changes while a button is held down for dimming (if applicable). Default value 3. Range [1,5] where 5 is fastest, 1 is slowest
+- `button_presets` (Attributes) (see [below for nested schema](#nestedatt--button_presets))
 - `current_limit` (Number) Limit (in Amperes) over which overcurrent condition occurs (shown if applicable). For PlusRGBWPM shown if device is calibrated.
 - `gamma` (Number) Gamma correction (dimensionless) - adjusts light intensity for perceptual linearity. Range 0.4 to 4.0, default 1.0 (if applicable)
 - `in_mode` (String) Mode of the associated input. Range of values: follow, flip, activate, detached, dim (if applicable), dual_dim (if applicable)
 - `initial_state` (String) Output state to set on power_on. Range of values: off, on, restore_last, toggle
 - `min_brightness_on_toggle` (Number) Brightness level (in percent) applied when there is a toggle and current brightness is lower than min_brightness_on_toggle.
 - `name` (String) Name of the light instance
+- `night_mode` (Attributes) (see [below for nested schema](#nestedatt--night_mode))
 - `op_mode` (Number) Operational mode (if applicable), which is device-specific. See the table below.
 - `power_limit` (Number) Limit (in Watts) over which overpower condition occurs (shown if applicable)
 - `transition_duration` (Number) Transition time (in seconds) - time to change from 0% to 100% of brightness (if applicable)
 - `undervoltage_limit` (Number) Limit (in Volts) under which undervoltage condition occurs (shown if applicable)
 - `voltage_limit` (Number) Limit (in Volts) over which overvoltage condition occurs (shown if applicable)
+- `warmup` (Attributes) (see [below for nested schema](#nestedatt--warmup))
+
+<a id="nestedatt--button_presets"></a>
+### Nested Schema for `button_presets`
+
+Optional:
+
+- `button_doublepush` (Attributes) (see [below for nested schema](#nestedatt--button_presets--button_doublepush))
+
+<a id="nestedatt--button_presets--button_doublepush"></a>
+### Nested Schema for `button_presets.button_doublepush`
+
+Optional:
+
+- `brightness` (Number) Brightness level (in percent) set on double click (if applicable), default: 100
+
+
+
+<a id="nestedatt--night_mode"></a>
+### Nested Schema for `night_mode`
+
+Optional:
+
+- `brightness` (Number) Brightness level limit when night mode is active. Default value 50.
+- `enable` (Boolean) Enable or disable night mode
+
+
+<a id="nestedatt--warmup"></a>
+### Nested Schema for `warmup`
+
+Optional:
+
+- `brightness` (Number) Warmup brightness in percent. Range 10-100%.
+- `enable` (Boolean) When enabled warmup is applied on toogle from off to on and brightness below 10%.
+- `time_ms` (Number) Time period during which warmup_brightness will be on. Range 20-1000 milliseconds.

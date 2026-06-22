@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"github.com/DonRobo/shelly-go"
+	shelly "github.com/DonRobo/shelly-go"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -66,20 +66,21 @@ func (d *ShellyDeviceDataSource) Read(ctx context.Context, req datasource.ReadRe
 	defer client.Close()
 	client.SetBaseURL("http://" + data.IP.ValueString())
 
-	statusReq := &shelly.SysGetConfigRequest{}
-	statusResp, _, err := statusReq.Do(client)
+	info, _, err := (&shelly.ShellyGetDeviceInfoRequest{}).Do(client)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to query device status", err.Error())
+		resp.Diagnostics.AddError("Failed to query device info", err.Error())
 		return
 	}
 
-	data.Version = types.StringValue(statusResp.Device.FW_ID)
-	if data.Version.IsNull() || data.Version.IsUnknown() || data.Version.ValueString() == "" {
+	if info.Ver != nil && *info.Ver != "" {
+		data.Version = types.StringValue(*info.Ver)
+	} else {
 		resp.Diagnostics.AddError("Version not found", "Could not find valid firmware version in response.")
 	}
 
-	data.MAC = types.StringValue(statusResp.Device.Mac)
-	if data.MAC.IsNull() || data.MAC.IsUnknown() || data.MAC.ValueString() == "" {
+	if info.MAC != nil && *info.MAC != "" {
+		data.MAC = types.StringValue(*info.MAC)
+	} else {
 		resp.Diagnostics.AddError("MAC address not found", "Could not find valid MAC address in response.")
 	}
 

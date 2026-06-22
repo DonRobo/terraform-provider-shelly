@@ -4,7 +4,7 @@ package provider
 
 import (
 	"context"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -109,7 +109,7 @@ func (r *ethConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.EthGetConfigRequest{}).Do(client)
+	got, _, err := (&components.EthGetConfigRequest{}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -142,7 +142,7 @@ func (r *ethConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 }
 
 func (r *ethConfigResource) apply(plan ethConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.EthConfig
+	var cfg components.EthConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
 		cfg.Enable = &v
@@ -178,7 +178,7 @@ func (r *ethConfigResource) apply(plan ethConfigResourceModel, diags *diag.Diagn
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.EthSetConfigRequest{Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.EthSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

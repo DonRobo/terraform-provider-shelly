@@ -27,10 +27,38 @@ description: |-
 - `auto_on` (Boolean) True if the "Automatic ON" function is enabled, false otherwise
 - `auto_on_delay` (Number) Seconds to pass until the component is switched back on
 - `button_fade_rate` (Number) Controls how quickly the output level changes while a button is held down for dimming (if applicable). Default value 3. Range [1,5] where 5 is fastest, 1 is slowest
+- `button_presets` (Attributes) (see [below for nested schema](#nestedatt--button_presets))
 - `current_limit` (Number) Limit (in Amperes) over which overcurrent condition occurs (shown if applicable). For specific devices applies for color channels, not CCT component
 - `initial_state` (String) Output state to set on power_on. Range of values: off, on, restore_last
 - `min_brightness_on_toggle` (Number) Brightness level (in percent) applied when there is a toggle and current brightness is lower than min_brightness_on_toggle.
 - `name` (String) Name of the CCT instance
+- `night_mode` (Attributes) (see [below for nested schema](#nestedatt--night_mode))
 - `power_limit` (Number) Limit (in Watts) over which overpower condition occurs (shown if applicable)
 - `transition_duration` (Number) Transition time (in seconds) - time to change from 0% to 100% of brightness (if applicable)
 - `voltage_limit` (Number) Limit (in Volts) over which overvoltage condition occurs (shown if applicable)
+
+<a id="nestedatt--button_presets"></a>
+### Nested Schema for `button_presets`
+
+Optional:
+
+- `button_doublepush` (Attributes) (see [below for nested schema](#nestedatt--button_presets--button_doublepush))
+
+<a id="nestedatt--button_presets--button_doublepush"></a>
+### Nested Schema for `button_presets.button_doublepush`
+
+Optional:
+
+- `brightness` (Number) Brightness level (in percent) set on double click (if applicable). null overrides brightness with current brightness when preset is applied. Default: 100
+- `ct` (Number) Color temperature level (in Kelvin) set on double click (if applicable). null overrides ct with current ct when preset is applied. Default: max setting of ct_range (device specific)
+
+
+
+<a id="nestedatt--night_mode"></a>
+### Nested Schema for `night_mode`
+
+Optional:
+
+- `brightness` (Number) Brightness level limit when night mode is active. null overrides night_mode.brightness with current brightness when night mode starts. Default value 50.
+- `ct` (Number) Color temperature level limit (in Kelvin) when night mode is active. null overrides night_mode.ct value with current ct value when night mode starts. Default value: 50% of ct_range. For DuoBulbG3: 4600
+- `enable` (Boolean) Enable or disable night mode

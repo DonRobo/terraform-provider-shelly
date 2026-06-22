@@ -5,7 +5,7 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -68,7 +68,7 @@ func (r *em1dataConfigResource) Read(ctx context.Context, req resource.ReadReque
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.EM1DataGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.EM1DataGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -83,7 +83,7 @@ func (r *em1dataConfigResource) Read(ctx context.Context, req resource.ReadReque
 }
 
 func (r *em1dataConfigResource) apply(plan em1dataConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.EM1DataConfig
+	var cfg components.EM1DataConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.TotalActEnergy.IsNull() && !plan.TotalActEnergy.IsUnknown() {
 		v := plan.TotalActEnergy.ValueFloat64()
@@ -96,7 +96,7 @@ func (r *em1dataConfigResource) apply(plan em1dataConfigResourceModel, diags *di
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.EM1DataSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.EM1DataSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

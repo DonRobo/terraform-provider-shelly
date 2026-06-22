@@ -26,11 +26,47 @@ resource "shelly_input_config" "example" {
 
 ### Required
 
-- `id` (Number) The zero-based ID of the input to configure (e.g., 0 for the first input).
+- `id` (Number) The ID of the Input component instance.
 - `ip` (String) The IP address of the Shelly device.
 
 ### Optional
 
-- `invert` (Boolean) (only for type switch, button, analog) True if the logical state of the associated input is inverted, false otherwise.
-- `name` (String) Name of the input instance.
-- `type` (String) Type of associated input. Range of values: switch, button, analog, count (only if applicable).
+- `count_rep_thr` (Number) (only for type count) Counts report threshold in number of pulses. Accepted range [1 - 2147483647]
+- `enable` (Boolean) Global enable flag. When disabled, the input instance doesn't emit any events and reports status properties as null. Applies for all input types
+- `factory_reset` (Boolean) (only for type switch, button) True if input-triggered factory reset option is enabled, false otherwise (shown if applicable)
+- `freq_rep_thr` (Number) (only for type count) Frequency report threshold in percent. Accepted range [0 - 10000]
+- `freq_window` (Number) (only for type count) Reference time in seconds for base of frequency measurement. Accepted range [1 - 3600]
+- `invert` (Boolean) (only for type switch, button, analog) True if the logical state of the associated input is inverted, false otherwise. For the change to be applied, the physical switch has to be toggled once after invert is set. For type analog inverts percent range - 100% becomes 0% and 0% becomes 100%
+- `name` (String) Name of the input instance
+- `range` (Number) (only for type analog) Analog input range, which is device-specific. See the table below.
+- `report_thr` (Number) (only for type analog) Analog input report threshold in percent. The accepted range is device-specific, default [1.0..50.0]% unless specified otherwise
+- `type` (String) Type of associated input. Range of values switch, button, analog, count (only if applicable).
+- `xcounts` (Attributes) (see [below for nested schema](#nestedatt--xcounts))
+- `xfreq` (Attributes) (see [below for nested schema](#nestedatt--xfreq))
+- `xpercent` (Attributes) (see [below for nested schema](#nestedatt--xpercent))
+
+<a id="nestedatt--xcounts"></a>
+### Nested Schema for `xcounts`
+
+Optional:
+
+- `expr` (String) JS expression containing x, where x is the raw value to be transformed (status.counts.total and status.counts.by_minute), for example "x+1". Accepted range: null or [0..100] chars. Both null and "" mean value transformation is disabled.
+- `unit` (String) Unit of the transformed values (status.counts.xtotal and status.counts.xby_minute), for example, "m/s". Accepted range: null or [0..20] chars. Both null and "" mean value transformation is disabled.
+
+
+<a id="nestedatt--xfreq"></a>
+### Nested Schema for `xfreq`
+
+Optional:
+
+- `expr` (String) JS expression containing x, where x is the raw value to be transformed (status.freq), for example "x+1". Accepted range: null or [0..100] chars. Both null and "" mean value transformation is disabled.
+- `unit` (String) Unit of the transformed value (status.xfreq), for example, "m/s". Accepted range: null or [0..20] chars. Both null and "" mean value transformation is disabled.
+
+
+<a id="nestedatt--xpercent"></a>
+### Nested Schema for `xpercent`
+
+Optional:
+
+- `expr` (String) JS expression containing x, where x is the raw value to be transformed (status.percent), for example "x+1". Accepted range: null or [0..100] chars. Both null and "" mean value transformation is disabled.
+- `unit` (String) Unit of the transformed value (status.xpercent), for example, "m/s". Accepted range: null or [0..20] chars. Both null and "" mean value transformation is disabled.

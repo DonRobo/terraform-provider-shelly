@@ -4,7 +4,7 @@ package provider
 
 import (
 	"context"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -56,7 +56,7 @@ func (r *uiConfigResource) Read(ctx context.Context, req resource.ReadRequest, r
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.UiGetConfigRequest{}).Do(client)
+	got, _, err := (&components.UiGetConfigRequest{}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -68,7 +68,7 @@ func (r *uiConfigResource) Read(ctx context.Context, req resource.ReadRequest, r
 }
 
 func (r *uiConfigResource) apply(plan uiConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.UiConfig
+	var cfg components.UiConfig
 	if !plan.IdleBrightness.IsNull() && !plan.IdleBrightness.IsUnknown() {
 		v := int(plan.IdleBrightness.ValueInt64())
 		cfg.IdleBrightness = &v
@@ -76,7 +76,7 @@ func (r *uiConfigResource) apply(plan uiConfigResourceModel, diags *diag.Diagnos
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.UiSetConfigRequest{Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.UiSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

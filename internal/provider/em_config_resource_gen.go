@@ -5,13 +5,14 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -30,14 +31,21 @@ func NewEMConfigResource() resource.Resource { return &emConfigResource{} }
 
 type emConfigResource struct{}
 
+type emConfigReverseModel struct {
+	A types.Bool `tfsdk:"a"`
+	B types.Bool `tfsdk:"b"`
+	C types.Bool `tfsdk:"c"`
+}
+
 type emConfigResourceModel struct {
-	IP                   types.String `tfsdk:"ip"`
-	ID                   types.Int64  `tfsdk:"id"`
-	Name                 types.String `tfsdk:"name"`
-	BlinkModeSelector    types.String `tfsdk:"blink_mode_selector"`
-	PhaseSelector        types.String `tfsdk:"phase_selector"`
-	MonitorPhaseSequence types.Bool   `tfsdk:"monitor_phase_sequence"`
-	CtType               types.String `tfsdk:"ct_type"`
+	IP                   types.String          `tfsdk:"ip"`
+	ID                   types.Int64           `tfsdk:"id"`
+	Name                 types.String          `tfsdk:"name"`
+	BlinkModeSelector    types.String          `tfsdk:"blink_mode_selector"`
+	PhaseSelector        types.String          `tfsdk:"phase_selector"`
+	MonitorPhaseSequence types.Bool            `tfsdk:"monitor_phase_sequence"`
+	Reverse              *emConfigReverseModel `tfsdk:"reverse"`
+	CtType               types.String          `tfsdk:"ct_type"`
 }
 
 func (r *emConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -75,6 +83,31 @@ func (r *emConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				MarkdownDescription: "Set this to show phase_sequence error in GetStatus if three-phase power system is used and the wires are not connected correctly to the device.",
 				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
+			"reverse": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"a": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "When set to true reverse CT measurement direction of active power and energy for phase A. shown if true",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"b": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "When set to true reverse CT measurement direction of active power and energy for phase B. shown if true",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"c": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "When set to true reverse CT measurement direction of active power and energy for phase C. shown if true",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 			"ct_type": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -94,7 +127,7 @@ func (r *emConfigResource) Read(ctx context.Context, req resource.ReadRequest, r
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.EMGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.EMGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -111,6 +144,20 @@ func (r *emConfigResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if got.MonitorPhaseSequence != nil {
 		state.MonitorPhaseSequence = types.BoolValue(*got.MonitorPhaseSequence)
 	}
+	if got.Reverse != nil {
+		if state.Reverse == nil {
+			state.Reverse = &emConfigReverseModel{}
+		}
+		if got.Reverse.A != nil {
+			state.Reverse.A = types.BoolValue(*got.Reverse.A)
+		}
+		if got.Reverse.B != nil {
+			state.Reverse.B = types.BoolValue(*got.Reverse.B)
+		}
+		if got.Reverse.C != nil {
+			state.Reverse.C = types.BoolValue(*got.Reverse.C)
+		}
+	}
 	if got.CtType != nil {
 		state.CtType = types.StringValue(*got.CtType)
 	}
@@ -118,7 +165,7 @@ func (r *emConfigResource) Read(ctx context.Context, req resource.ReadRequest, r
 }
 
 func (r *emConfigResource) apply(plan emConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.EMConfig
+	var cfg components.EMConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
@@ -136,6 +183,21 @@ func (r *emConfigResource) apply(plan emConfigResourceModel, diags *diag.Diagnos
 		v := plan.MonitorPhaseSequence.ValueBool()
 		cfg.MonitorPhaseSequence = &v
 	}
+	if plan.Reverse != nil {
+		cfg.Reverse = &components.EMConfigReverse{}
+		if !plan.Reverse.A.IsNull() && !plan.Reverse.A.IsUnknown() {
+			v := plan.Reverse.A.ValueBool()
+			cfg.Reverse.A = &v
+		}
+		if !plan.Reverse.B.IsNull() && !plan.Reverse.B.IsUnknown() {
+			v := plan.Reverse.B.ValueBool()
+			cfg.Reverse.B = &v
+		}
+		if !plan.Reverse.C.IsNull() && !plan.Reverse.C.IsUnknown() {
+			v := plan.Reverse.C.ValueBool()
+			cfg.Reverse.C = &v
+		}
+	}
 	if !plan.CtType.IsNull() && !plan.CtType.IsUnknown() {
 		v := plan.CtType.ValueString()
 		cfg.CtType = &v
@@ -143,7 +205,7 @@ func (r *emConfigResource) apply(plan emConfigResourceModel, diags *diag.Diagnos
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.EMSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.EMSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

@@ -5,7 +5,7 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -31,17 +32,25 @@ func NewRGBCCTConfigResource() resource.Resource { return &rgbcctConfigResource{
 
 type rgbcctConfigResource struct{}
 
+type rgbcctConfigNightModeModel struct {
+	Enable     types.Bool    `tfsdk:"enable"`
+	Brightness types.Float64 `tfsdk:"brightness"`
+	Ct         types.Float64 `tfsdk:"ct"`
+	Mode       types.String  `tfsdk:"mode"`
+}
+
 type rgbcctConfigResourceModel struct {
-	IP                    types.String  `tfsdk:"ip"`
-	ID                    types.Int64   `tfsdk:"id"`
-	Name                  types.String  `tfsdk:"name"`
-	InitialState          types.String  `tfsdk:"initial_state"`
-	AutoOn                types.Bool    `tfsdk:"auto_on"`
-	AutoOnDelay           types.Float64 `tfsdk:"auto_on_delay"`
-	AutoOff               types.Bool    `tfsdk:"auto_off"`
-	AutoOffDelay          types.Float64 `tfsdk:"auto_off_delay"`
-	TransitionDuration    types.Float64 `tfsdk:"transition_duration"`
-	MinBrightnessOnToggle types.Float64 `tfsdk:"min_brightness_on_toggle"`
+	IP                    types.String                `tfsdk:"ip"`
+	ID                    types.Int64                 `tfsdk:"id"`
+	Name                  types.String                `tfsdk:"name"`
+	InitialState          types.String                `tfsdk:"initial_state"`
+	AutoOn                types.Bool                  `tfsdk:"auto_on"`
+	AutoOnDelay           types.Float64               `tfsdk:"auto_on_delay"`
+	AutoOff               types.Bool                  `tfsdk:"auto_off"`
+	AutoOffDelay          types.Float64               `tfsdk:"auto_off_delay"`
+	TransitionDuration    types.Float64               `tfsdk:"transition_duration"`
+	MinBrightnessOnToggle types.Float64               `tfsdk:"min_brightness_on_toggle"`
+	NightMode             *rgbcctConfigNightModeModel `tfsdk:"night_mode"`
 }
 
 func (r *rgbcctConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -102,6 +111,38 @@ func (r *rgbcctConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 				MarkdownDescription: "Brightness level (in percent) applied when there is a toggle and current brightness is lower than min_brightness_on_toggle.",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"night_mode": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"enable": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Enable or disable night mode",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"brightness": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Brightness level limit (in percent) when night mode is active. null overrides night_mode.brightness with current brightness when night mode starts. Default value 50.",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"ct": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Color temperature level limit (in Kelvin) when night mode is active. null overrides night_mode.ct value with current ct value when night mode starts. Default value: 50% of ct_range. For DuoBulbG3: 4600",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"mode": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Operating mode of the light output when night mode is active. Range of values: rgb, cct or null. null overrides night_mode.mode value with current mode when night mode starts. Default value: rgb",
+						Validators:          []validator.String{stringvalidator.OneOf("rgb")},
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 		},
 	}
 }
@@ -115,7 +156,7 @@ func (r *rgbcctConfigResource) Read(ctx context.Context, req resource.ReadReques
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.RGBCCTGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.RGBCCTGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -144,11 +185,28 @@ func (r *rgbcctConfigResource) Read(ctx context.Context, req resource.ReadReques
 	if got.MinBrightnessOnToggle != nil {
 		state.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
 	}
+	if got.NightMode != nil {
+		if state.NightMode == nil {
+			state.NightMode = &rgbcctConfigNightModeModel{}
+		}
+		if got.NightMode.Enable != nil {
+			state.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		}
+		if got.NightMode.Brightness != nil {
+			state.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		}
+		if got.NightMode.Ct != nil {
+			state.NightMode.Ct = types.Float64Value(*got.NightMode.Ct)
+		}
+		if got.NightMode.Mode != nil {
+			state.NightMode.Mode = types.StringValue(*got.NightMode.Mode)
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *rgbcctConfigResource) apply(plan rgbcctConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.RGBCCTConfig
+	var cfg components.RGBCCTConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
@@ -182,10 +240,29 @@ func (r *rgbcctConfigResource) apply(plan rgbcctConfigResourceModel, diags *diag
 		v := plan.MinBrightnessOnToggle.ValueFloat64()
 		cfg.MinBrightnessOnToggle = &v
 	}
+	if plan.NightMode != nil {
+		cfg.NightMode = &components.RGBCCTConfigNightMode{}
+		if !plan.NightMode.Enable.IsNull() && !plan.NightMode.Enable.IsUnknown() {
+			v := plan.NightMode.Enable.ValueBool()
+			cfg.NightMode.Enable = &v
+		}
+		if !plan.NightMode.Brightness.IsNull() && !plan.NightMode.Brightness.IsUnknown() {
+			v := plan.NightMode.Brightness.ValueFloat64()
+			cfg.NightMode.Brightness = &v
+		}
+		if !plan.NightMode.Ct.IsNull() && !plan.NightMode.Ct.IsUnknown() {
+			v := plan.NightMode.Ct.ValueFloat64()
+			cfg.NightMode.Ct = &v
+		}
+		if !plan.NightMode.Mode.IsNull() && !plan.NightMode.Mode.IsUnknown() {
+			v := plan.NightMode.Mode.ValueString()
+			cfg.NightMode.Mode = &v
+		}
+	}
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.RGBCCTSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.RGBCCTSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

@@ -27,7 +27,52 @@ description: |-
 - `initial_state` (String) Defines Cover target state on power-on, one of open (Cover will fully open), closed (Cover will fully close) or stopped (Cover will not change its position)
 - `maxtime_close` (Number) Default timeout after which Cover will stop moving in a close direction
 - `maxtime_open` (Number) Default timeout after which Cover will stop moving in open direction
+- `motor` (Attributes) (see [below for nested schema](#nestedatt--motor))
 - `name` (String) Name of the Cover component instance
+- `obstruction_detection` (Attributes) (see [below for nested schema](#nestedatt--obstruction_detection))
 - `power_limit` (Number) Watts, a limit that must be exceeded to trigger an overpower error
+- `safety_switch` (Attributes) (see [below for nested schema](#nestedatt--safety_switch))
+- `slat` (Attributes) (see [below for nested schema](#nestedatt--slat))
 - `undervoltage_limit` (Number) Volts, a limit that must be subceeded to trigger an undervoltage error
 - `voltage_limit` (Number) Volts, a limit that must be exceeded to trigger an overvoltage error
+
+<a id="nestedatt--motor"></a>
+### Nested Schema for `motor`
+
+Optional:
+
+- `idle_confirm_period` (Number) Seconds, the minimum period of time in idle state before the state is confirmed
+- `idle_power_thr` (Number) Watts, threshold below which the motor is considered stopped
+
+
+<a id="nestedatt--obstruction_detection"></a>
+### Nested Schema for `obstruction_detection`
+
+Optional:
+
+- `direction` (String) The direction of motion for which the safety switch should be monitored, one of open, close, both
+- `enable` (Boolean) true when obstruction detection is enabled, false otherwise
+- `holdoff` (Number) Seconds, time to wait after Cover starts moving before obstruction detection is activated (to avoid false detections because of the initial power consumption spike)
+- `power_thr` (Number) Watts, power consumption above this threshold should be interpreted as objects obstructing Cover movement. This property is editable at any time, but note that during the cover calibration procedure (Cover.Calibrate), power_thr will be automatically set to the peak power consumption + 15%, overwriting the current value. The automatic setup of power_thr during calibration will only start tracking power values when the holdoff time (see below) has elapsed
+
+
+<a id="nestedatt--safety_switch"></a>
+### Nested Schema for `safety_switch`
+
+Optional:
+
+- `direction` (String) The direction of motion for which the safety switch should be monitored, one of open, close, both
+- `enable` (Boolean) true when the safety switch is enabled, false otherwise
+
+
+<a id="nestedatt--slat"></a>
+### Nested Schema for `slat`
+
+Optional:
+
+- `close_time` (Number) Time it takes for slats to move from fully open (100%) to fully closed (100%) position, seconds. Must be manually configured by the user. Accepted range: [0.5..30]s
+- `enable` (Boolean) true when slat control is enabled, false otherwise
+- `open_time` (Number) Time it takes for slats to move from fully closed (0%) to fully open (100%) position, seconds. Must be manually configured by the user. Accepted range: [0.5..30]s
+- `precise_ctl` (Boolean) This property only applies when cover (vertical) position is less than one full slat rotation away from the fully closed position. If this condition is met, any slat movement will always go through fully closed position first. This improves slat positioning accuracy, yet is slower to execute.
+- `retain_pos` (Boolean) Whether to retain slat position when cover (vertical) position is changed
+- `step` (Number) Single step movement spread, represented as % from the full range (used only when slats are controlled via inputs). Accepted range: [1..100]%

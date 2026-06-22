@@ -4,7 +4,7 @@ package provider
 
 import (
 	"context"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -56,7 +56,7 @@ func (r *modbusConfigResource) Read(ctx context.Context, req resource.ReadReques
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.ModbusGetConfigRequest{}).Do(client)
+	got, _, err := (&components.ModbusGetConfigRequest{}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -68,7 +68,7 @@ func (r *modbusConfigResource) Read(ctx context.Context, req resource.ReadReques
 }
 
 func (r *modbusConfigResource) apply(plan modbusConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.ModbusConfig
+	var cfg components.ModbusConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
 		cfg.Enable = &v
@@ -76,7 +76,7 @@ func (r *modbusConfigResource) apply(plan modbusConfigResourceModel, diags *diag
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.ModbusSetConfigRequest{Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.ModbusSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

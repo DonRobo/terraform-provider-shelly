@@ -22,4 +22,24 @@ description: |-
 
 ### Optional
 
+- `mb_server` (Attributes) (see [below for nested schema](#nestedatt--mb_server))
 - `mode` (String) Operating mode for the serial port. Supported modes are listed in the modes attribute.
+- `serial` (Attributes) (see [below for nested schema](#nestedatt--serial))
+
+<a id="nestedatt--mb_server"></a>
+### Nested Schema for `mb_server`
+
+Optional:
+
+- `addr` (Number) RTU Server Address, between 1 and 247
+
+
+<a id="nestedatt--serial"></a>
+### Nested Schema for `serial`
+
+Optional:
+
+- `baud` (Number) Baud rate
+- `de_al` (Boolean) Optional. Driver Enable (DE) active level. Only present on devices where the underlying hardware supports it. true = active high, false = active low.
+- `format` (String) A 3-character string indicating the serial frame format to use, e.g. 8N1
+- `hd` (Boolean) Optional. Half-duplex mode. Only present on devices where the underlying hardware supports it. true = enabled, false = disabled.

@@ -28,5 +28,95 @@ resource "shelly_sys_config" "example" {
 
 ### Optional
 
-- `eco_mode` (Boolean) Eco mode (experimental) decreases power consumption when enabled, at the cost of reduced execution speed and increased network latency.
-- `name` (String) The name of the Shelly device.
+- `cfg_rev` (Number) Configuration revision. This number will be incremented for every configuration change of a device component. If the new config value is the same as the old one there will be no change of this property. Can not be modified explicitly by a call to Sys.SetConfig
+- `debug` (Attributes) (see [below for nested schema](#nestedatt--debug))
+- `device` (Attributes) (see [below for nested schema](#nestedatt--device))
+- `location` (Attributes) (see [below for nested schema](#nestedatt--location))
+- `rpc_udp` (Attributes) (see [below for nested schema](#nestedatt--rpc_udp))
+- `sntp` (Attributes) (see [below for nested schema](#nestedatt--sntp))
+
+<a id="nestedatt--debug"></a>
+### Nested Schema for `debug`
+
+Optional:
+
+- `file_log` (Attributes) (see [below for nested schema](#nestedatt--debug--file_log))
+- `mqtt` (Attributes) (see [below for nested schema](#nestedatt--debug--mqtt))
+- `udp` (Attributes) (see [below for nested schema](#nestedatt--debug--udp))
+- `websocket` (Attributes) (see [below for nested schema](#nestedatt--debug--websocket))
+
+<a id="nestedatt--debug--file_log"></a>
+### Nested Schema for `debug.file_log`
+
+Optional:
+
+- `enable` (Boolean) True if enabled, false otherwise
+
+
+<a id="nestedatt--debug--mqtt"></a>
+### Nested Schema for `debug.mqtt`
+
+Optional:
+
+- `enable` (Boolean) True if enabled, false otherwise
+
+
+<a id="nestedatt--debug--udp"></a>
+### Nested Schema for `debug.udp`
+
+Optional:
+
+- `addr` (String) Address that the device log is streamed to (null to disable logs)
+
+
+<a id="nestedatt--debug--websocket"></a>
+### Nested Schema for `debug.websocket`
+
+Optional:
+
+- `enable` (Boolean) True if enabled, false otherwise
+
+
+
+<a id="nestedatt--device"></a>
+### Nested Schema for `device`
+
+Optional:
+
+- `addon_type` (String) Enable/disable addon board (if supported). Range of values: sensor(SensorAddon), sensor(ProSensorAddon), prooutput, LoRa; null to disable.
+- `discoverable` (Boolean) If true, device is shown in 'Discovered devices'. If false, the device is hidden.
+- `eco_mode` (Boolean) Experimental Decreases power consumption when set to true, at the cost of reduced execution speed and increased network latency
+- `enhanced_security` (Boolean) (Since 2.0.0) Read-only on devices shipped with firmware 2.0.0+ from factory (always true). On devices with factory firmware prior to 2.0.0, can be set to true but can only be reset to false via factory reset. When enabled, enforces additional security measures (see Enhanced Security section below).
+- `fw_id` (String) Read-only build identifier of the current firmware image
+- `mac` (String) Read-only base MAC address of the device
+- `name` (String) Name of the device
+- `profile` (String) Name of the device profile (only applicable for multi-profile devices)
+- `sys_btn_toggle` (Boolean) Enable/disable outputs toggle when the system (reset) button is pressed (shown if applicable).
+- `tls_check_cert_validity_time` (Boolean) (Since 2.0.0) When true, TLS certificate date/time validation is enforced for outbound connections. Can only be set to false when enhanced_security is false. This is a temporary option for users experiencing certificate validation issues due to time synchronization problems; subject to deprecation in future releases.
+
+
+<a id="nestedatt--location"></a>
+### Nested Schema for `location`
+
+Optional:
+
+- `lat` (Number) Latitude in degrees (null if unavailable)
+- `lon` (Number) Longitude in degrees (null if unavailable)
+- `tz` (String) Timezone (null if unavailable)
+
+
+<a id="nestedatt--rpc_udp"></a>
+### Nested Schema for `rpc_udp`
+
+Optional:
+
+- `dst_addr` (String)
+- `listen_port` (Number) Port number for inbound UDP RPC channel, null disables. Restart is required for changes to apply
+
+
+<a id="nestedatt--sntp"></a>
+### Nested Schema for `sntp`
+
+Optional:
+
+- `server` (String) Name of the sntp server
