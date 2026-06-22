@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"resty.dev/v3"
@@ -32,6 +33,7 @@ type em1dataConfigResourceModel struct {
 	ID                types.Int64   `tfsdk:"id"`
 	TotalActEnergy    types.Float64 `tfsdk:"total_act_energy"`
 	TotalActRetEnergy types.Float64 `tfsdk:"total_act_ret_energy"`
+	Errors            types.List    `tfsdk:"errors"`
 }
 
 func (r *em1dataConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -55,7 +57,36 @@ func (r *em1dataConfigResource) Schema(_ context.Context, _ resource.SchemaReque
 				MarkdownDescription: "Total active returned energy, Wh",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"errors": schema.ListAttribute{
+				ElementType:         types.StringType,
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Error condition occurred. May contain database_error or ct_type_not_set, (shown if the error is present).",
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+			},
 		},
+	}
+}
+
+func (r *em1dataConfigResource) get(ctx context.Context, m *em1dataConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.EM1DataGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.TotalActEnergy != nil {
+		m.TotalActEnergy = types.Float64Value(*got.TotalActEnergy)
+	}
+	if got.TotalActRetEnergy != nil {
+		m.TotalActRetEnergy = types.Float64Value(*got.TotalActRetEnergy)
+	}
+	if got.Errors != nil {
+		l, d := types.ListValueFrom(ctx, types.StringType, got.Errors)
+		diags.Append(d...)
+		m.Errors = l
 	}
 }
 
@@ -65,24 +96,14 @@ func (r *em1dataConfigResource) Read(ctx context.Context, req resource.ReadReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.EM1DataGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.TotalActEnergy != nil {
-		state.TotalActEnergy = types.Float64Value(*got.TotalActEnergy)
-	}
-	if got.TotalActRetEnergy != nil {
-		state.TotalActRetEnergy = types.Float64Value(*got.TotalActRetEnergy)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *em1dataConfigResource) apply(plan em1dataConfigResourceModel, diags *diag.Diagnostics) {
+func (r *em1dataConfigResource) apply(ctx context.Context, plan em1dataConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.EM1DataConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.TotalActEnergy.IsNull() && !plan.TotalActEnergy.IsUnknown() {
@@ -92,6 +113,11 @@ func (r *em1dataConfigResource) apply(plan em1dataConfigResourceModel, diags *di
 	if !plan.TotalActRetEnergy.IsNull() && !plan.TotalActRetEnergy.IsUnknown() {
 		v := plan.TotalActRetEnergy.ValueFloat64()
 		cfg.TotalActRetEnergy = &v
+	}
+	if !plan.Errors.IsNull() && !plan.Errors.IsUnknown() {
+		var v []string
+		diags.Append(plan.Errors.ElementsAs(ctx, &v, false)...)
+		cfg.Errors = v
 	}
 	client := resty.New()
 	defer client.Close()
@@ -107,7 +133,11 @@ func (r *em1dataConfigResource) Create(ctx context.Context, req resource.CreateR
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -120,7 +150,11 @@ func (r *em1dataConfigResource) Update(ctx context.Context, req resource.UpdateR
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

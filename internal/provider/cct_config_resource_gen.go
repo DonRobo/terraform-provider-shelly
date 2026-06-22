@@ -203,90 +203,97 @@ func (r *cctConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
+func (r *cctConfigResource) get(ctx context.Context, m *cctConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.CCTGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.InitialState != nil {
+		m.InitialState = types.StringValue(*got.InitialState)
+	}
+	if got.AutoOn != nil {
+		m.AutoOn = types.BoolValue(*got.AutoOn)
+	}
+	if got.AutoOnDelay != nil {
+		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	}
+	if got.AutoOff != nil {
+		m.AutoOff = types.BoolValue(*got.AutoOff)
+	}
+	if got.AutoOffDelay != nil {
+		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	}
+	if got.TransitionDuration != nil {
+		m.TransitionDuration = types.Float64Value(*got.TransitionDuration)
+	}
+	if got.MinBrightnessOnToggle != nil {
+		m.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
+	}
+	if got.NightMode != nil {
+		if m.NightMode == nil {
+			m.NightMode = &cctConfigNightModeModel{}
+		}
+		if got.NightMode.Enable != nil {
+			m.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		}
+		if got.NightMode.Brightness != nil {
+			m.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		}
+		if got.NightMode.Ct != nil {
+			m.NightMode.Ct = types.Float64Value(*got.NightMode.Ct)
+		}
+	}
+	if got.ButtonFadeRate != nil {
+		m.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
+	}
+	if got.ButtonPresets != nil {
+		if m.ButtonPresets == nil {
+			m.ButtonPresets = &cctConfigButtonPresetsModel{}
+		}
+		if got.ButtonPresets.ButtonDoublepush != nil {
+			if m.ButtonPresets.ButtonDoublepush == nil {
+				m.ButtonPresets.ButtonDoublepush = &cctConfigButtonPresetsButtonDoublepushModel{}
+			}
+			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
+				m.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
+			}
+			if got.ButtonPresets.ButtonDoublepush.Ct != nil {
+				m.ButtonPresets.ButtonDoublepush.Ct = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Ct)
+			}
+		}
+	}
+	if got.CurrentLimit != nil {
+		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	}
+	if got.PowerLimit != nil {
+		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	}
+	if got.VoltageLimit != nil {
+		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	}
+}
+
 func (r *cctConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state cctConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.CCTGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.InitialState != nil {
-		state.InitialState = types.StringValue(*got.InitialState)
-	}
-	if got.AutoOn != nil {
-		state.AutoOn = types.BoolValue(*got.AutoOn)
-	}
-	if got.AutoOnDelay != nil {
-		state.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
-	}
-	if got.AutoOff != nil {
-		state.AutoOff = types.BoolValue(*got.AutoOff)
-	}
-	if got.AutoOffDelay != nil {
-		state.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
-	}
-	if got.TransitionDuration != nil {
-		state.TransitionDuration = types.Float64Value(*got.TransitionDuration)
-	}
-	if got.MinBrightnessOnToggle != nil {
-		state.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
-	}
-	if got.NightMode != nil {
-		if state.NightMode == nil {
-			state.NightMode = &cctConfigNightModeModel{}
-		}
-		if got.NightMode.Enable != nil {
-			state.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
-		}
-		if got.NightMode.Brightness != nil {
-			state.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
-		}
-		if got.NightMode.Ct != nil {
-			state.NightMode.Ct = types.Float64Value(*got.NightMode.Ct)
-		}
-	}
-	if got.ButtonFadeRate != nil {
-		state.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
-	}
-	if got.ButtonPresets != nil {
-		if state.ButtonPresets == nil {
-			state.ButtonPresets = &cctConfigButtonPresetsModel{}
-		}
-		if got.ButtonPresets.ButtonDoublepush != nil {
-			if state.ButtonPresets.ButtonDoublepush == nil {
-				state.ButtonPresets.ButtonDoublepush = &cctConfigButtonPresetsButtonDoublepushModel{}
-			}
-			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
-				state.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
-			}
-			if got.ButtonPresets.ButtonDoublepush.Ct != nil {
-				state.ButtonPresets.ButtonDoublepush.Ct = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Ct)
-			}
-		}
-	}
-	if got.CurrentLimit != nil {
-		state.CurrentLimit = types.Float64Value(*got.CurrentLimit)
-	}
-	if got.PowerLimit != nil {
-		state.PowerLimit = types.Float64Value(*got.PowerLimit)
-	}
-	if got.VoltageLimit != nil {
-		state.VoltageLimit = types.Float64Value(*got.VoltageLimit)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *cctConfigResource) apply(plan cctConfigResourceModel, diags *diag.Diagnostics) {
+func (r *cctConfigResource) apply(ctx context.Context, plan cctConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.CCTConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -380,7 +387,11 @@ func (r *cctConfigResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -393,7 +404,11 @@ func (r *cctConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

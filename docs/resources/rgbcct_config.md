@@ -37,7 +37,9 @@ description: |-
 
 Optional:
 
+- `active_between` (List of String) Containing 2 elements of type string, the first element indicates the start of the period during which the night mode will be active, the second indicates the end of that period. Both start and end are strings in the format HH:MM, where HH and MM are hours and minutes with optinal leading zeros
 - `brightness` (Number) Brightness level limit (in percent) when night mode is active. null overrides night_mode.brightness with current brightness when night mode starts. Default value 50.
 - `ct` (Number) Color temperature level limit (in Kelvin) when night mode is active. null overrides night_mode.ct value with current ct value when night mode starts. Default value: 50% of ct_range. For DuoBulbG3: 4600
 - `enable` (Boolean) Enable or disable night mode
 - `mode` (String) Operating mode of the light output when night mode is active. Range of values: rgb, cct or null. null overrides night_mode.mode value with current mode when night mode starts. Default value: rgb
+- `rgb` (List of Number) Color level when night mode is active. Red, Green, Blue [r,g,b] - each value represents level between 0..255. null overrides night_mode.rgb array with current rgb array when night mode starts. Default value 255 for each color

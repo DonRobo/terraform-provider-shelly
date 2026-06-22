@@ -259,118 +259,125 @@ func (r *presenceConfigResource) Schema(_ context.Context, _ resource.SchemaRequ
 	}
 }
 
+func (r *presenceConfigResource) get(ctx context.Context, m *presenceConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.PresenceGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Enable != nil {
+		m.Enable = types.BoolValue(*got.Enable)
+	}
+	if got.Zmin != nil {
+		m.Zmin = types.Float64Value(*got.Zmin)
+	}
+	if got.Zmax != nil {
+		m.Zmax = types.Float64Value(*got.Zmax)
+	}
+	if got.Sensor != nil {
+		if m.Sensor == nil {
+			m.Sensor = &presenceConfigSensorModel{}
+		}
+		if got.Sensor.Flipped != nil {
+			m.Sensor.Flipped = types.BoolValue(*got.Sensor.Flipped)
+		}
+		if got.Sensor.Height != nil {
+			m.Sensor.Height = types.Float64Value(*got.Sensor.Height)
+		}
+		if got.Sensor.Tilt != nil {
+			m.Sensor.Tilt = types.Float64Value(*got.Sensor.Tilt)
+		}
+		if got.Sensor.Points != nil {
+			m.Sensor.Points = types.Float64Value(*got.Sensor.Points)
+		}
+		if got.Sensor.Velocity != nil {
+			m.Sensor.Velocity = types.Float64Value(*got.Sensor.Velocity)
+		}
+		if got.Sensor.Snr != nil {
+			m.Sensor.Snr = types.Float64Value(*got.Sensor.Snr)
+		}
+		if got.Sensor.MaxVelocity != nil {
+			m.Sensor.MaxVelocity = types.Float64Value(*got.Sensor.MaxVelocity)
+		}
+		if got.Sensor.Position != nil {
+			m.Sensor.Position = types.StringValue(*got.Sensor.Position)
+		}
+		if got.Sensor.Power != nil {
+			m.Sensor.Power = types.StringValue(*got.Sensor.Power)
+		}
+		if got.Sensor.Sensitivity != nil {
+			m.Sensor.Sensitivity = types.StringValue(*got.Sensor.Sensitivity)
+		}
+		if got.Sensor.State != nil {
+			if m.Sensor.State == nil {
+				m.Sensor.State = &presenceConfigSensorStateModel{}
+			}
+			if got.Sensor.State.DetActThr != nil {
+				m.Sensor.State.DetActThr = types.Float64Value(*got.Sensor.State.DetActThr)
+			}
+			if got.Sensor.State.DetFreeThr != nil {
+				m.Sensor.State.DetFreeThr = types.Float64Value(*got.Sensor.State.DetFreeThr)
+			}
+			if got.Sensor.State.ActFreeThr != nil {
+				m.Sensor.State.ActFreeThr = types.Float64Value(*got.Sensor.State.ActFreeThr)
+			}
+			if got.Sensor.State.StatFreeThr != nil {
+				m.Sensor.State.StatFreeThr = types.Float64Value(*got.Sensor.State.StatFreeThr)
+			}
+			if got.Sensor.State.SleepFreeThr != nil {
+				m.Sensor.State.SleepFreeThr = types.Float64Value(*got.Sensor.State.SleepFreeThr)
+			}
+		}
+	}
+	if got.UI != nil {
+		if m.UI == nil {
+			m.UI = &presenceConfigUIModel{}
+		}
+		if got.UI.Imperial != nil {
+			m.UI.Imperial = types.BoolValue(*got.UI.Imperial)
+		}
+	}
+	if got.Leds != nil {
+		if m.Leds == nil {
+			m.Leds = &presenceConfigLedsModel{}
+		}
+		if got.Leds.Brightness != nil {
+			m.Leds.Brightness = types.BoolValue(*got.Leds.Brightness)
+		}
+		if got.Leds.NightMode != nil {
+			if m.Leds.NightMode == nil {
+				m.Leds.NightMode = &presenceConfigLedsNightModeModel{}
+			}
+			if got.Leds.NightMode.Enable != nil {
+				m.Leds.NightMode.Enable = types.BoolValue(*got.Leds.NightMode.Enable)
+			}
+			if got.Leds.NightMode.Brightness != nil {
+				m.Leds.NightMode.Brightness = types.Float64Value(*got.Leds.NightMode.Brightness)
+			}
+		}
+	}
+	if got.MainZone != nil {
+		m.MainZone = types.StringValue(*got.MainZone)
+	}
+}
+
 func (r *presenceConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state presenceConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.PresenceGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Enable != nil {
-		state.Enable = types.BoolValue(*got.Enable)
-	}
-	if got.Zmin != nil {
-		state.Zmin = types.Float64Value(*got.Zmin)
-	}
-	if got.Zmax != nil {
-		state.Zmax = types.Float64Value(*got.Zmax)
-	}
-	if got.Sensor != nil {
-		if state.Sensor == nil {
-			state.Sensor = &presenceConfigSensorModel{}
-		}
-		if got.Sensor.Flipped != nil {
-			state.Sensor.Flipped = types.BoolValue(*got.Sensor.Flipped)
-		}
-		if got.Sensor.Height != nil {
-			state.Sensor.Height = types.Float64Value(*got.Sensor.Height)
-		}
-		if got.Sensor.Tilt != nil {
-			state.Sensor.Tilt = types.Float64Value(*got.Sensor.Tilt)
-		}
-		if got.Sensor.Points != nil {
-			state.Sensor.Points = types.Float64Value(*got.Sensor.Points)
-		}
-		if got.Sensor.Velocity != nil {
-			state.Sensor.Velocity = types.Float64Value(*got.Sensor.Velocity)
-		}
-		if got.Sensor.Snr != nil {
-			state.Sensor.Snr = types.Float64Value(*got.Sensor.Snr)
-		}
-		if got.Sensor.MaxVelocity != nil {
-			state.Sensor.MaxVelocity = types.Float64Value(*got.Sensor.MaxVelocity)
-		}
-		if got.Sensor.Position != nil {
-			state.Sensor.Position = types.StringValue(*got.Sensor.Position)
-		}
-		if got.Sensor.Power != nil {
-			state.Sensor.Power = types.StringValue(*got.Sensor.Power)
-		}
-		if got.Sensor.Sensitivity != nil {
-			state.Sensor.Sensitivity = types.StringValue(*got.Sensor.Sensitivity)
-		}
-		if got.Sensor.State != nil {
-			if state.Sensor.State == nil {
-				state.Sensor.State = &presenceConfigSensorStateModel{}
-			}
-			if got.Sensor.State.DetActThr != nil {
-				state.Sensor.State.DetActThr = types.Float64Value(*got.Sensor.State.DetActThr)
-			}
-			if got.Sensor.State.DetFreeThr != nil {
-				state.Sensor.State.DetFreeThr = types.Float64Value(*got.Sensor.State.DetFreeThr)
-			}
-			if got.Sensor.State.ActFreeThr != nil {
-				state.Sensor.State.ActFreeThr = types.Float64Value(*got.Sensor.State.ActFreeThr)
-			}
-			if got.Sensor.State.StatFreeThr != nil {
-				state.Sensor.State.StatFreeThr = types.Float64Value(*got.Sensor.State.StatFreeThr)
-			}
-			if got.Sensor.State.SleepFreeThr != nil {
-				state.Sensor.State.SleepFreeThr = types.Float64Value(*got.Sensor.State.SleepFreeThr)
-			}
-		}
-	}
-	if got.UI != nil {
-		if state.UI == nil {
-			state.UI = &presenceConfigUIModel{}
-		}
-		if got.UI.Imperial != nil {
-			state.UI.Imperial = types.BoolValue(*got.UI.Imperial)
-		}
-	}
-	if got.Leds != nil {
-		if state.Leds == nil {
-			state.Leds = &presenceConfigLedsModel{}
-		}
-		if got.Leds.Brightness != nil {
-			state.Leds.Brightness = types.BoolValue(*got.Leds.Brightness)
-		}
-		if got.Leds.NightMode != nil {
-			if state.Leds.NightMode == nil {
-				state.Leds.NightMode = &presenceConfigLedsNightModeModel{}
-			}
-			if got.Leds.NightMode.Enable != nil {
-				state.Leds.NightMode.Enable = types.BoolValue(*got.Leds.NightMode.Enable)
-			}
-			if got.Leds.NightMode.Brightness != nil {
-				state.Leds.NightMode.Brightness = types.Float64Value(*got.Leds.NightMode.Brightness)
-			}
-		}
-	}
-	if got.MainZone != nil {
-		state.MainZone = types.StringValue(*got.MainZone)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *presenceConfigResource) apply(plan presenceConfigResourceModel, diags *diag.Diagnostics) {
+func (r *presenceConfigResource) apply(ctx context.Context, plan presenceConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.PresenceConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
@@ -493,7 +500,11 @@ func (r *presenceConfigResource) Create(ctx context.Context, req resource.Create
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -506,7 +517,11 @@ func (r *presenceConfigResource) Update(ctx context.Context, req resource.Update
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

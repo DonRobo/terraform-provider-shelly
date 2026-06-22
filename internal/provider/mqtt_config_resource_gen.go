@@ -90,45 +90,52 @@ func (r *mqttConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
+func (r *mqttConfigResource) get(ctx context.Context, m *mqttConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.MQTTGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Enable != nil {
+		m.Enable = types.BoolValue(*got.Enable)
+	}
+	if got.Server != nil {
+		m.Server = types.StringValue(*got.Server)
+	}
+	if got.User != nil {
+		m.User = types.StringValue(*got.User)
+	}
+	if got.RPCNtf != nil {
+		m.RPCNtf = types.BoolValue(*got.RPCNtf)
+	}
+	if got.StatusNtf != nil {
+		m.StatusNtf = types.BoolValue(*got.StatusNtf)
+	}
+	if got.UseClientCert != nil {
+		m.UseClientCert = types.BoolValue(*got.UseClientCert)
+	}
+	if got.EnableControl != nil {
+		m.EnableControl = types.BoolValue(*got.EnableControl)
+	}
+}
+
 func (r *mqttConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state mqttConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.MQTTGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Enable != nil {
-		state.Enable = types.BoolValue(*got.Enable)
-	}
-	if got.Server != nil {
-		state.Server = types.StringValue(*got.Server)
-	}
-	if got.User != nil {
-		state.User = types.StringValue(*got.User)
-	}
-	if got.RPCNtf != nil {
-		state.RPCNtf = types.BoolValue(*got.RPCNtf)
-	}
-	if got.StatusNtf != nil {
-		state.StatusNtf = types.BoolValue(*got.StatusNtf)
-	}
-	if got.UseClientCert != nil {
-		state.UseClientCert = types.BoolValue(*got.UseClientCert)
-	}
-	if got.EnableControl != nil {
-		state.EnableControl = types.BoolValue(*got.EnableControl)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *mqttConfigResource) apply(plan mqttConfigResourceModel, diags *diag.Diagnostics) {
+func (r *mqttConfigResource) apply(ctx context.Context, plan mqttConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.MQTTConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
@@ -172,7 +179,11 @@ func (r *mqttConfigResource) Create(ctx context.Context, req resource.CreateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -185,7 +196,11 @@ func (r *mqttConfigResource) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

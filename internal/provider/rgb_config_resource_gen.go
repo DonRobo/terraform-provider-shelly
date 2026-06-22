@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -33,12 +34,15 @@ func NewRGBConfigResource() resource.Resource { return &rgbConfigResource{} }
 type rgbConfigResource struct{}
 
 type rgbConfigNightModeModel struct {
-	Enable     types.Bool    `tfsdk:"enable"`
-	Brightness types.Float64 `tfsdk:"brightness"`
+	Enable        types.Bool    `tfsdk:"enable"`
+	Brightness    types.Float64 `tfsdk:"brightness"`
+	RGB           types.List    `tfsdk:"rgb"`
+	ActiveBetween types.List    `tfsdk:"active_between"`
 }
 
 type rgbConfigButtonPresetsButtonDoublepushModel struct {
 	Brightness types.Float64 `tfsdk:"brightness"`
+	RGB        types.List    `tfsdk:"rgb"`
 }
 
 type rgbConfigButtonPresetsModel struct {
@@ -147,6 +151,20 @@ func (r *rgbConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						MarkdownDescription: "Brightness level limit (in percent) when night mode is active. null overrides night_mode.brightness with current brightness when night mode starts. Default value 50.",
 						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 					},
+					"rgb": schema.ListAttribute{
+						ElementType:         types.Float64Type,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Color level when night mode is active. Red, Green, Blue [r,g,b] - each value represents level between 0..255. null overrides night_mode.rgb array with current rgb array when night mode starts. Default value 255 for each color",
+						PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+					},
+					"active_between": schema.ListAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Containing 2 elements of type string, the first element indicates the start of the period during which the night mode will be active, the second indicates the end of that period. Both start and end are strings in the format HH:MM, where HH and MM are hours and minutes with optinal leading zeros",
+						PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+					},
 				},
 			},
 			"button_fade_rate": schema.Float64Attribute{
@@ -170,6 +188,13 @@ func (r *rgbConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 								Computed:            true,
 								MarkdownDescription: "Brightness level (in percent) set on double click (if applicable). null overrides brightness with current brightness when preset is applied. Default 100",
 								PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+							},
+							"rgb": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Color level set on double click (if applicable). Red, Green, Blue [r,g,b] - each value represents level between 0..255. null overrides rgb array with current rgb array when preset is applied. Default value 255 for each color",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 							},
 						},
 					},
@@ -197,87 +222,109 @@ func (r *rgbConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
+func (r *rgbConfigResource) get(ctx context.Context, m *rgbConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.RGBGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.InMode != nil {
+		m.InMode = types.StringValue(*got.InMode)
+	}
+	if got.InitialState != nil {
+		m.InitialState = types.StringValue(*got.InitialState)
+	}
+	if got.AutoOn != nil {
+		m.AutoOn = types.BoolValue(*got.AutoOn)
+	}
+	if got.AutoOnDelay != nil {
+		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	}
+	if got.AutoOff != nil {
+		m.AutoOff = types.BoolValue(*got.AutoOff)
+	}
+	if got.AutoOffDelay != nil {
+		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	}
+	if got.TransitionDuration != nil {
+		m.TransitionDuration = types.Float64Value(*got.TransitionDuration)
+	}
+	if got.MinBrightnessOnToggle != nil {
+		m.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
+	}
+	if got.NightMode != nil {
+		if m.NightMode == nil {
+			m.NightMode = &rgbConfigNightModeModel{}
+		}
+		if got.NightMode.Enable != nil {
+			m.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		}
+		if got.NightMode.Brightness != nil {
+			m.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		}
+		if got.NightMode.RGB != nil {
+			l, d := types.ListValueFrom(ctx, types.Float64Type, got.NightMode.RGB)
+			diags.Append(d...)
+			m.NightMode.RGB = l
+		}
+		if got.NightMode.ActiveBetween != nil {
+			l, d := types.ListValueFrom(ctx, types.StringType, got.NightMode.ActiveBetween)
+			diags.Append(d...)
+			m.NightMode.ActiveBetween = l
+		}
+	}
+	if got.ButtonFadeRate != nil {
+		m.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
+	}
+	if got.ButtonPresets != nil {
+		if m.ButtonPresets == nil {
+			m.ButtonPresets = &rgbConfigButtonPresetsModel{}
+		}
+		if got.ButtonPresets.ButtonDoublepush != nil {
+			if m.ButtonPresets.ButtonDoublepush == nil {
+				m.ButtonPresets.ButtonDoublepush = &rgbConfigButtonPresetsButtonDoublepushModel{}
+			}
+			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
+				m.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
+			}
+			if got.ButtonPresets.ButtonDoublepush.RGB != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.ButtonPresets.ButtonDoublepush.RGB)
+				diags.Append(d...)
+				m.ButtonPresets.ButtonDoublepush.RGB = l
+			}
+		}
+	}
+	if got.CurrentLimit != nil {
+		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	}
+	if got.PowerLimit != nil {
+		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	}
+	if got.VoltageLimit != nil {
+		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	}
+}
+
 func (r *rgbConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state rgbConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.RGBGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.InMode != nil {
-		state.InMode = types.StringValue(*got.InMode)
-	}
-	if got.InitialState != nil {
-		state.InitialState = types.StringValue(*got.InitialState)
-	}
-	if got.AutoOn != nil {
-		state.AutoOn = types.BoolValue(*got.AutoOn)
-	}
-	if got.AutoOnDelay != nil {
-		state.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
-	}
-	if got.AutoOff != nil {
-		state.AutoOff = types.BoolValue(*got.AutoOff)
-	}
-	if got.AutoOffDelay != nil {
-		state.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
-	}
-	if got.TransitionDuration != nil {
-		state.TransitionDuration = types.Float64Value(*got.TransitionDuration)
-	}
-	if got.MinBrightnessOnToggle != nil {
-		state.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
-	}
-	if got.NightMode != nil {
-		if state.NightMode == nil {
-			state.NightMode = &rgbConfigNightModeModel{}
-		}
-		if got.NightMode.Enable != nil {
-			state.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
-		}
-		if got.NightMode.Brightness != nil {
-			state.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
-		}
-	}
-	if got.ButtonFadeRate != nil {
-		state.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
-	}
-	if got.ButtonPresets != nil {
-		if state.ButtonPresets == nil {
-			state.ButtonPresets = &rgbConfigButtonPresetsModel{}
-		}
-		if got.ButtonPresets.ButtonDoublepush != nil {
-			if state.ButtonPresets.ButtonDoublepush == nil {
-				state.ButtonPresets.ButtonDoublepush = &rgbConfigButtonPresetsButtonDoublepushModel{}
-			}
-			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
-				state.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
-			}
-		}
-	}
-	if got.CurrentLimit != nil {
-		state.CurrentLimit = types.Float64Value(*got.CurrentLimit)
-	}
-	if got.PowerLimit != nil {
-		state.PowerLimit = types.Float64Value(*got.PowerLimit)
-	}
-	if got.VoltageLimit != nil {
-		state.VoltageLimit = types.Float64Value(*got.VoltageLimit)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *rgbConfigResource) apply(plan rgbConfigResourceModel, diags *diag.Diagnostics) {
+func (r *rgbConfigResource) apply(ctx context.Context, plan rgbConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.RGBConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -326,6 +373,16 @@ func (r *rgbConfigResource) apply(plan rgbConfigResourceModel, diags *diag.Diagn
 			v := plan.NightMode.Brightness.ValueFloat64()
 			cfg.NightMode.Brightness = &v
 		}
+		if !plan.NightMode.RGB.IsNull() && !plan.NightMode.RGB.IsUnknown() {
+			var v []float64
+			diags.Append(plan.NightMode.RGB.ElementsAs(ctx, &v, false)...)
+			cfg.NightMode.RGB = v
+		}
+		if !plan.NightMode.ActiveBetween.IsNull() && !plan.NightMode.ActiveBetween.IsUnknown() {
+			var v []string
+			diags.Append(plan.NightMode.ActiveBetween.ElementsAs(ctx, &v, false)...)
+			cfg.NightMode.ActiveBetween = v
+		}
 	}
 	if !plan.ButtonFadeRate.IsNull() && !plan.ButtonFadeRate.IsUnknown() {
 		v := plan.ButtonFadeRate.ValueFloat64()
@@ -338,6 +395,11 @@ func (r *rgbConfigResource) apply(plan rgbConfigResourceModel, diags *diag.Diagn
 			if !plan.ButtonPresets.ButtonDoublepush.Brightness.IsNull() && !plan.ButtonPresets.ButtonDoublepush.Brightness.IsUnknown() {
 				v := plan.ButtonPresets.ButtonDoublepush.Brightness.ValueFloat64()
 				cfg.ButtonPresets.ButtonDoublepush.Brightness = &v
+			}
+			if !plan.ButtonPresets.ButtonDoublepush.RGB.IsNull() && !plan.ButtonPresets.ButtonDoublepush.RGB.IsUnknown() {
+				var v []float64
+				diags.Append(plan.ButtonPresets.ButtonDoublepush.RGB.ElementsAs(ctx, &v, false)...)
+				cfg.ButtonPresets.ButtonDoublepush.RGB = v
 			}
 		}
 	}
@@ -367,7 +429,11 @@ func (r *rgbConfigResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -380,7 +446,11 @@ func (r *rgbConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

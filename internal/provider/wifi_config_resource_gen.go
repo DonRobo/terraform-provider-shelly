@@ -202,92 +202,99 @@ func (r *wifiConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
+func (r *wifiConfigResource) get(ctx context.Context, m *wifiConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.WifiGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.AP != nil {
+		if m.AP == nil {
+			m.AP = &wifiConfigAPModel{}
+		}
+		if got.AP.SSID != nil {
+			m.AP.SSID = types.StringValue(*got.AP.SSID)
+		}
+		if got.AP.Pass != nil {
+			m.AP.Pass = types.StringValue(*got.AP.Pass)
+		}
+		if got.AP.IsOpen != nil {
+			m.AP.IsOpen = types.BoolValue(*got.AP.IsOpen)
+		}
+		if got.AP.Enable != nil {
+			m.AP.Enable = types.BoolValue(*got.AP.Enable)
+		}
+		if got.AP.RangeExtender != nil {
+			if m.AP.RangeExtender == nil {
+				m.AP.RangeExtender = &wifiConfigAPRangeExtenderModel{}
+			}
+			if got.AP.RangeExtender.Enable != nil {
+				m.AP.RangeExtender.Enable = types.BoolValue(*got.AP.RangeExtender.Enable)
+			}
+		}
+	}
+	if got.Sta != nil {
+		if m.Sta == nil {
+			m.Sta = &wifiConfigStaModel{}
+		}
+		if got.Sta.SSID != nil {
+			m.Sta.SSID = types.StringValue(*got.Sta.SSID)
+		}
+		if got.Sta.Pass != nil {
+			m.Sta.Pass = types.StringValue(*got.Sta.Pass)
+		}
+		if got.Sta.IsOpen != nil {
+			m.Sta.IsOpen = types.BoolValue(*got.Sta.IsOpen)
+		}
+		if got.Sta.Enable != nil {
+			m.Sta.Enable = types.BoolValue(*got.Sta.Enable)
+		}
+		if got.Sta.Ipv4mode != nil {
+			m.Sta.Ipv4mode = types.StringValue(*got.Sta.Ipv4mode)
+		}
+		if got.Sta.IP != nil {
+			m.Sta.IP = types.StringValue(*got.Sta.IP)
+		}
+		if got.Sta.Netmask != nil {
+			m.Sta.Netmask = types.StringValue(*got.Sta.Netmask)
+		}
+		if got.Sta.Gw != nil {
+			m.Sta.Gw = types.StringValue(*got.Sta.Gw)
+		}
+		if got.Sta.Nameserver != nil {
+			m.Sta.Nameserver = types.StringValue(*got.Sta.Nameserver)
+		}
+	}
+	if got.Roam != nil {
+		if m.Roam == nil {
+			m.Roam = &wifiConfigRoamModel{}
+		}
+		if got.Roam.RssiThr != nil {
+			m.Roam.RssiThr = types.Float64Value(*got.Roam.RssiThr)
+		}
+		if got.Roam.Interval != nil {
+			m.Roam.Interval = types.Float64Value(*got.Roam.Interval)
+		}
+	}
+}
+
 func (r *wifiConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state wifiConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.WifiGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.AP != nil {
-		if state.AP == nil {
-			state.AP = &wifiConfigAPModel{}
-		}
-		if got.AP.SSID != nil {
-			state.AP.SSID = types.StringValue(*got.AP.SSID)
-		}
-		if got.AP.Pass != nil {
-			state.AP.Pass = types.StringValue(*got.AP.Pass)
-		}
-		if got.AP.IsOpen != nil {
-			state.AP.IsOpen = types.BoolValue(*got.AP.IsOpen)
-		}
-		if got.AP.Enable != nil {
-			state.AP.Enable = types.BoolValue(*got.AP.Enable)
-		}
-		if got.AP.RangeExtender != nil {
-			if state.AP.RangeExtender == nil {
-				state.AP.RangeExtender = &wifiConfigAPRangeExtenderModel{}
-			}
-			if got.AP.RangeExtender.Enable != nil {
-				state.AP.RangeExtender.Enable = types.BoolValue(*got.AP.RangeExtender.Enable)
-			}
-		}
-	}
-	if got.Sta != nil {
-		if state.Sta == nil {
-			state.Sta = &wifiConfigStaModel{}
-		}
-		if got.Sta.SSID != nil {
-			state.Sta.SSID = types.StringValue(*got.Sta.SSID)
-		}
-		if got.Sta.Pass != nil {
-			state.Sta.Pass = types.StringValue(*got.Sta.Pass)
-		}
-		if got.Sta.IsOpen != nil {
-			state.Sta.IsOpen = types.BoolValue(*got.Sta.IsOpen)
-		}
-		if got.Sta.Enable != nil {
-			state.Sta.Enable = types.BoolValue(*got.Sta.Enable)
-		}
-		if got.Sta.Ipv4mode != nil {
-			state.Sta.Ipv4mode = types.StringValue(*got.Sta.Ipv4mode)
-		}
-		if got.Sta.IP != nil {
-			state.Sta.IP = types.StringValue(*got.Sta.IP)
-		}
-		if got.Sta.Netmask != nil {
-			state.Sta.Netmask = types.StringValue(*got.Sta.Netmask)
-		}
-		if got.Sta.Gw != nil {
-			state.Sta.Gw = types.StringValue(*got.Sta.Gw)
-		}
-		if got.Sta.Nameserver != nil {
-			state.Sta.Nameserver = types.StringValue(*got.Sta.Nameserver)
-		}
-	}
-	if got.Roam != nil {
-		if state.Roam == nil {
-			state.Roam = &wifiConfigRoamModel{}
-		}
-		if got.Roam.RssiThr != nil {
-			state.Roam.RssiThr = types.Float64Value(*got.Roam.RssiThr)
-		}
-		if got.Roam.Interval != nil {
-			state.Roam.Interval = types.Float64Value(*got.Roam.Interval)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *wifiConfigResource) apply(plan wifiConfigResourceModel, diags *diag.Diagnostics) {
+func (r *wifiConfigResource) apply(ctx context.Context, plan wifiConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.WifiConfig
 	if plan.AP != nil {
 		cfg.AP = &components.WifiConfigAP{}
@@ -379,7 +386,11 @@ func (r *wifiConfigResource) Create(ctx context.Context, req resource.CreateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -392,7 +403,11 @@ func (r *wifiConfigResource) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

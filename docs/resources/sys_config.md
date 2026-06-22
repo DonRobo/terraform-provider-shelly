@@ -87,12 +87,15 @@ Optional:
 - `discoverable` (Boolean) If true, device is shown in 'Discovered devices'. If false, the device is hidden.
 - `eco_mode` (Boolean) Experimental Decreases power consumption when set to true, at the cost of reduced execution speed and increased network latency
 - `enhanced_security` (Boolean) (Since 2.0.0) Read-only on devices shipped with firmware 2.0.0+ from factory (always true). On devices with factory firmware prior to 2.0.0, can be set to true but can only be reset to false via factory reset. When enabled, enforces additional security measures (see Enhanced Security section below).
-- `fw_id` (String) Read-only build identifier of the current firmware image
-- `mac` (String) Read-only base MAC address of the device
 - `name` (String) Name of the device
 - `profile` (String) Name of the device profile (only applicable for multi-profile devices)
 - `sys_btn_toggle` (Boolean) Enable/disable outputs toggle when the system (reset) button is pressed (shown if applicable).
 - `tls_check_cert_validity_time` (Boolean) (Since 2.0.0) When true, TLS certificate date/time validation is enforced for outbound connections. Can only be set to false when enhanced_security is false. This is a temporary option for users experiencing certificate validation issues due to time synchronization problems; subject to deprecation in future releases.
+
+Read-Only:
+
+- `fw_id` (String) Read-only build identifier of the current firmware image
+- `mac` (String) Read-only base MAC address of the device
 
 
 <a id="nestedatt--location"></a>

@@ -112,52 +112,59 @@ func (r *serialConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 	}
 }
 
+func (r *serialConfigResource) get(ctx context.Context, m *serialConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.SerialGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Mode != nil {
+		m.Mode = types.StringValue(*got.Mode)
+	}
+	if got.Serial != nil {
+		if m.Serial == nil {
+			m.Serial = &serialConfigSerialModel{}
+		}
+		if got.Serial.Baud != nil {
+			m.Serial.Baud = types.Int64Value(int64(*got.Serial.Baud))
+		}
+		if got.Serial.Format != nil {
+			m.Serial.Format = types.StringValue(*got.Serial.Format)
+		}
+		if got.Serial.Hd != nil {
+			m.Serial.Hd = types.BoolValue(*got.Serial.Hd)
+		}
+		if got.Serial.DeAl != nil {
+			m.Serial.DeAl = types.BoolValue(*got.Serial.DeAl)
+		}
+	}
+	if got.MbServer != nil {
+		if m.MbServer == nil {
+			m.MbServer = &serialConfigMbServerModel{}
+		}
+		if got.MbServer.Addr != nil {
+			m.MbServer.Addr = types.Int64Value(int64(*got.MbServer.Addr))
+		}
+	}
+}
+
 func (r *serialConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state serialConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.SerialGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Mode != nil {
-		state.Mode = types.StringValue(*got.Mode)
-	}
-	if got.Serial != nil {
-		if state.Serial == nil {
-			state.Serial = &serialConfigSerialModel{}
-		}
-		if got.Serial.Baud != nil {
-			state.Serial.Baud = types.Int64Value(int64(*got.Serial.Baud))
-		}
-		if got.Serial.Format != nil {
-			state.Serial.Format = types.StringValue(*got.Serial.Format)
-		}
-		if got.Serial.Hd != nil {
-			state.Serial.Hd = types.BoolValue(*got.Serial.Hd)
-		}
-		if got.Serial.DeAl != nil {
-			state.Serial.DeAl = types.BoolValue(*got.Serial.DeAl)
-		}
-	}
-	if got.MbServer != nil {
-		if state.MbServer == nil {
-			state.MbServer = &serialConfigMbServerModel{}
-		}
-		if got.MbServer.Addr != nil {
-			state.MbServer.Addr = types.Int64Value(int64(*got.MbServer.Addr))
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *serialConfigResource) apply(plan serialConfigResourceModel, diags *diag.Diagnostics) {
+func (r *serialConfigResource) apply(ctx context.Context, plan serialConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.SerialConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Mode.IsNull() && !plan.Mode.IsUnknown() {
@@ -204,7 +211,11 @@ func (r *serialConfigResource) Create(ctx context.Context, req resource.CreateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -217,7 +228,11 @@ func (r *serialConfigResource) Update(ctx context.Context, req resource.UpdateRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

@@ -67,33 +67,40 @@ func (r *illuminanceConfigResource) Schema(_ context.Context, _ resource.SchemaR
 	}
 }
 
+func (r *illuminanceConfigResource) get(ctx context.Context, m *illuminanceConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.IlluminanceGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.DarkThr != nil {
+		m.DarkThr = types.Float64Value(*got.DarkThr)
+	}
+	if got.BrightThr != nil {
+		m.BrightThr = types.Float64Value(*got.BrightThr)
+	}
+}
+
 func (r *illuminanceConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state illuminanceConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.IlluminanceGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.DarkThr != nil {
-		state.DarkThr = types.Float64Value(*got.DarkThr)
-	}
-	if got.BrightThr != nil {
-		state.BrightThr = types.Float64Value(*got.BrightThr)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *illuminanceConfigResource) apply(plan illuminanceConfigResourceModel, diags *diag.Diagnostics) {
+func (r *illuminanceConfigResource) apply(ctx context.Context, plan illuminanceConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.IlluminanceConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -122,7 +129,11 @@ func (r *illuminanceConfigResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -135,7 +146,11 @@ func (r *illuminanceConfigResource) Update(ctx context.Context, req resource.Upd
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

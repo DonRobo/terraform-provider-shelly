@@ -47,27 +47,34 @@ func (r *uiConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	}
 }
 
+func (r *uiConfigResource) get(ctx context.Context, m *uiConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.UiGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.IdleBrightness != nil {
+		m.IdleBrightness = types.Int64Value(int64(*got.IdleBrightness))
+	}
+}
+
 func (r *uiConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state uiConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.UiGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.IdleBrightness != nil {
-		state.IdleBrightness = types.Int64Value(int64(*got.IdleBrightness))
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *uiConfigResource) apply(plan uiConfigResourceModel, diags *diag.Diagnostics) {
+func (r *uiConfigResource) apply(ctx context.Context, plan uiConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.UiConfig
 	if !plan.IdleBrightness.IsNull() && !plan.IdleBrightness.IsUnknown() {
 		v := int(plan.IdleBrightness.ValueInt64())
@@ -87,7 +94,11 @@ func (r *uiConfigResource) Create(ctx context.Context, req resource.CreateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -100,7 +111,11 @@ func (r *uiConfigResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

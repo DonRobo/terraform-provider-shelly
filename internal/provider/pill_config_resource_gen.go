@@ -68,36 +68,43 @@ func (r *pillConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
+func (r *pillConfigResource) get(ctx context.Context, m *pillConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.PillGetConfigRequest{}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Mode != nil {
+		m.Mode = types.StringValue(*got.Mode)
+	}
+	if got.Pin0Mode != nil {
+		m.Pin0Mode = types.StringValue(*got.Pin0Mode)
+	}
+	if got.Pin1Mode != nil {
+		m.Pin1Mode = types.StringValue(*got.Pin1Mode)
+	}
+	if got.Pin2Mode != nil {
+		m.Pin2Mode = types.StringValue(*got.Pin2Mode)
+	}
+}
+
 func (r *pillConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state pillConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.PillGetConfigRequest{}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Mode != nil {
-		state.Mode = types.StringValue(*got.Mode)
-	}
-	if got.Pin0Mode != nil {
-		state.Pin0Mode = types.StringValue(*got.Pin0Mode)
-	}
-	if got.Pin1Mode != nil {
-		state.Pin1Mode = types.StringValue(*got.Pin1Mode)
-	}
-	if got.Pin2Mode != nil {
-		state.Pin2Mode = types.StringValue(*got.Pin2Mode)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *pillConfigResource) apply(plan pillConfigResourceModel, diags *diag.Diagnostics) {
+func (r *pillConfigResource) apply(ctx context.Context, plan pillConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.PillConfig
 	if !plan.Mode.IsNull() && !plan.Mode.IsUnknown() {
 		v := plan.Mode.ValueString()
@@ -129,7 +136,11 @@ func (r *pillConfigResource) Create(ctx context.Context, req resource.CreateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -142,7 +153,11 @@ func (r *pillConfigResource) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

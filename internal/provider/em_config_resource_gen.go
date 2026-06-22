@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -37,6 +38,30 @@ type emConfigReverseModel struct {
 	C types.Bool `tfsdk:"c"`
 }
 
+type emConfigAlarmsAModel struct {
+	Voltage types.List `tfsdk:"voltage"`
+	Current types.List `tfsdk:"current"`
+	Power   types.List `tfsdk:"power"`
+}
+
+type emConfigAlarmsBModel struct {
+	Voltage types.List `tfsdk:"voltage"`
+	Current types.List `tfsdk:"current"`
+	Power   types.List `tfsdk:"power"`
+}
+
+type emConfigAlarmsCModel struct {
+	Voltage types.List `tfsdk:"voltage"`
+	Current types.List `tfsdk:"current"`
+	Power   types.List `tfsdk:"power"`
+}
+
+type emConfigAlarmsModel struct {
+	A *emConfigAlarmsAModel `tfsdk:"a"`
+	B *emConfigAlarmsBModel `tfsdk:"b"`
+	C *emConfigAlarmsCModel `tfsdk:"c"`
+}
+
 type emConfigResourceModel struct {
 	IP                   types.String          `tfsdk:"ip"`
 	ID                   types.Int64           `tfsdk:"id"`
@@ -45,6 +70,7 @@ type emConfigResourceModel struct {
 	PhaseSelector        types.String          `tfsdk:"phase_selector"`
 	MonitorPhaseSequence types.Bool            `tfsdk:"monitor_phase_sequence"`
 	Reverse              *emConfigReverseModel `tfsdk:"reverse"`
+	Alarms               *emConfigAlarmsModel  `tfsdk:"alarms"`
 	CtType               types.String          `tfsdk:"ct_type"`
 }
 
@@ -108,6 +134,97 @@ func (r *emConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					},
 				},
 			},
+			"alarms": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"a": schema.SingleNestedAttribute{
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+						Attributes: map[string]schema.Attribute{
+							"voltage": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+							"current": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+							"power": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+						},
+					},
+					"b": schema.SingleNestedAttribute{
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+						Attributes: map[string]schema.Attribute{
+							"voltage": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+							"current": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+							"power": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+						},
+					},
+					"c": schema.SingleNestedAttribute{
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+						Attributes: map[string]schema.Attribute{
+							"voltage": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+							"current": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+							"power": schema.ListAttribute{
+								ElementType:         types.Float64Type,
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "['under','over'] thresholds",
+								PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+							},
+						},
+					},
+				},
+			},
 			"ct_type": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -118,53 +235,125 @@ func (r *emConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 	}
 }
 
+func (r *emConfigResource) get(ctx context.Context, m *emConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.EMGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.BlinkModeSelector != nil {
+		m.BlinkModeSelector = types.StringValue(*got.BlinkModeSelector)
+	}
+	if got.PhaseSelector != nil {
+		m.PhaseSelector = types.StringValue(*got.PhaseSelector)
+	}
+	if got.MonitorPhaseSequence != nil {
+		m.MonitorPhaseSequence = types.BoolValue(*got.MonitorPhaseSequence)
+	}
+	if got.Reverse != nil {
+		if m.Reverse == nil {
+			m.Reverse = &emConfigReverseModel{}
+		}
+		if got.Reverse.A != nil {
+			m.Reverse.A = types.BoolValue(*got.Reverse.A)
+		}
+		if got.Reverse.B != nil {
+			m.Reverse.B = types.BoolValue(*got.Reverse.B)
+		}
+		if got.Reverse.C != nil {
+			m.Reverse.C = types.BoolValue(*got.Reverse.C)
+		}
+	}
+	if got.Alarms != nil {
+		if m.Alarms == nil {
+			m.Alarms = &emConfigAlarmsModel{}
+		}
+		if got.Alarms.A != nil {
+			if m.Alarms.A == nil {
+				m.Alarms.A = &emConfigAlarmsAModel{}
+			}
+			if got.Alarms.A.Voltage != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.A.Voltage)
+				diags.Append(d...)
+				m.Alarms.A.Voltage = l
+			}
+			if got.Alarms.A.Current != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.A.Current)
+				diags.Append(d...)
+				m.Alarms.A.Current = l
+			}
+			if got.Alarms.A.Power != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.A.Power)
+				diags.Append(d...)
+				m.Alarms.A.Power = l
+			}
+		}
+		if got.Alarms.B != nil {
+			if m.Alarms.B == nil {
+				m.Alarms.B = &emConfigAlarmsBModel{}
+			}
+			if got.Alarms.B.Voltage != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.B.Voltage)
+				diags.Append(d...)
+				m.Alarms.B.Voltage = l
+			}
+			if got.Alarms.B.Current != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.B.Current)
+				diags.Append(d...)
+				m.Alarms.B.Current = l
+			}
+			if got.Alarms.B.Power != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.B.Power)
+				diags.Append(d...)
+				m.Alarms.B.Power = l
+			}
+		}
+		if got.Alarms.C != nil {
+			if m.Alarms.C == nil {
+				m.Alarms.C = &emConfigAlarmsCModel{}
+			}
+			if got.Alarms.C.Voltage != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.C.Voltage)
+				diags.Append(d...)
+				m.Alarms.C.Voltage = l
+			}
+			if got.Alarms.C.Current != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.C.Current)
+				diags.Append(d...)
+				m.Alarms.C.Current = l
+			}
+			if got.Alarms.C.Power != nil {
+				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.C.Power)
+				diags.Append(d...)
+				m.Alarms.C.Power = l
+			}
+		}
+	}
+	if got.CtType != nil {
+		m.CtType = types.StringValue(*got.CtType)
+	}
+}
+
 func (r *emConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state emConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.EMGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.BlinkModeSelector != nil {
-		state.BlinkModeSelector = types.StringValue(*got.BlinkModeSelector)
-	}
-	if got.PhaseSelector != nil {
-		state.PhaseSelector = types.StringValue(*got.PhaseSelector)
-	}
-	if got.MonitorPhaseSequence != nil {
-		state.MonitorPhaseSequence = types.BoolValue(*got.MonitorPhaseSequence)
-	}
-	if got.Reverse != nil {
-		if state.Reverse == nil {
-			state.Reverse = &emConfigReverseModel{}
-		}
-		if got.Reverse.A != nil {
-			state.Reverse.A = types.BoolValue(*got.Reverse.A)
-		}
-		if got.Reverse.B != nil {
-			state.Reverse.B = types.BoolValue(*got.Reverse.B)
-		}
-		if got.Reverse.C != nil {
-			state.Reverse.C = types.BoolValue(*got.Reverse.C)
-		}
-	}
-	if got.CtType != nil {
-		state.CtType = types.StringValue(*got.CtType)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *emConfigResource) apply(plan emConfigResourceModel, diags *diag.Diagnostics) {
+func (r *emConfigResource) apply(ctx context.Context, plan emConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.EMConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -198,6 +387,63 @@ func (r *emConfigResource) apply(plan emConfigResourceModel, diags *diag.Diagnos
 			cfg.Reverse.C = &v
 		}
 	}
+	if plan.Alarms != nil {
+		cfg.Alarms = &components.EMConfigAlarms{}
+		if plan.Alarms.A != nil {
+			cfg.Alarms.A = &components.EMConfigAlarmsA{}
+			if !plan.Alarms.A.Voltage.IsNull() && !plan.Alarms.A.Voltage.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.A.Voltage.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.A.Voltage = v
+			}
+			if !plan.Alarms.A.Current.IsNull() && !plan.Alarms.A.Current.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.A.Current.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.A.Current = v
+			}
+			if !plan.Alarms.A.Power.IsNull() && !plan.Alarms.A.Power.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.A.Power.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.A.Power = v
+			}
+		}
+		if plan.Alarms.B != nil {
+			cfg.Alarms.B = &components.EMConfigAlarmsB{}
+			if !plan.Alarms.B.Voltage.IsNull() && !plan.Alarms.B.Voltage.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.B.Voltage.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.B.Voltage = v
+			}
+			if !plan.Alarms.B.Current.IsNull() && !plan.Alarms.B.Current.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.B.Current.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.B.Current = v
+			}
+			if !plan.Alarms.B.Power.IsNull() && !plan.Alarms.B.Power.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.B.Power.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.B.Power = v
+			}
+		}
+		if plan.Alarms.C != nil {
+			cfg.Alarms.C = &components.EMConfigAlarmsC{}
+			if !plan.Alarms.C.Voltage.IsNull() && !plan.Alarms.C.Voltage.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.C.Voltage.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.C.Voltage = v
+			}
+			if !plan.Alarms.C.Current.IsNull() && !plan.Alarms.C.Current.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.C.Current.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.C.Current = v
+			}
+			if !plan.Alarms.C.Power.IsNull() && !plan.Alarms.C.Power.IsUnknown() {
+				var v []float64
+				diags.Append(plan.Alarms.C.Power.ElementsAs(ctx, &v, false)...)
+				cfg.Alarms.C.Power = v
+			}
+		}
+	}
 	if !plan.CtType.IsNull() && !plan.CtType.IsUnknown() {
 		v := plan.CtType.ValueString()
 		cfg.CtType = &v
@@ -216,7 +462,11 @@ func (r *emConfigResource) Create(ctx context.Context, req resource.CreateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -229,7 +479,11 @@ func (r *emConfigResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}

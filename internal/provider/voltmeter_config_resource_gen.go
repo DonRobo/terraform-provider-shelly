@@ -93,44 +93,51 @@ func (r *voltmeterConfigResource) Schema(_ context.Context, _ resource.SchemaReq
 	}
 }
 
+func (r *voltmeterConfigResource) get(ctx context.Context, m *voltmeterConfigResourceModel, diags *diag.Diagnostics) {
+	client := resty.New()
+	defer client.Close()
+	client.SetBaseURL("http://" + m.IP.ValueString())
+	got, _, err := (&components.VoltmeterGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
+	if err != nil {
+		diags.AddError("Failed to read config", err.Error())
+		return
+	}
+	if got.Name != nil {
+		m.Name = types.StringValue(*got.Name)
+	}
+	if got.ReportThr != nil {
+		m.ReportThr = types.Float64Value(*got.ReportThr)
+	}
+	if got.Range != nil {
+		m.Range = types.Float64Value(*got.Range)
+	}
+	if got.Xvoltage != nil {
+		if m.Xvoltage == nil {
+			m.Xvoltage = &voltmeterConfigXvoltageModel{}
+		}
+		if got.Xvoltage.Expr != nil {
+			m.Xvoltage.Expr = types.StringValue(*got.Xvoltage.Expr)
+		}
+		if got.Xvoltage.Unit != nil {
+			m.Xvoltage.Unit = types.StringValue(*got.Xvoltage.Unit)
+		}
+	}
+}
+
 func (r *voltmeterConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state voltmeterConfigResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	client := resty.New()
-	defer client.Close()
-	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&components.VoltmeterGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read config", err.Error())
+	r.get(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
-	}
-	if got.Name != nil {
-		state.Name = types.StringValue(*got.Name)
-	}
-	if got.ReportThr != nil {
-		state.ReportThr = types.Float64Value(*got.ReportThr)
-	}
-	if got.Range != nil {
-		state.Range = types.Float64Value(*got.Range)
-	}
-	if got.Xvoltage != nil {
-		if state.Xvoltage == nil {
-			state.Xvoltage = &voltmeterConfigXvoltageModel{}
-		}
-		if got.Xvoltage.Expr != nil {
-			state.Xvoltage.Expr = types.StringValue(*got.Xvoltage.Expr)
-		}
-		if got.Xvoltage.Unit != nil {
-			state.Xvoltage.Unit = types.StringValue(*got.Xvoltage.Unit)
-		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *voltmeterConfigResource) apply(plan voltmeterConfigResourceModel, diags *diag.Diagnostics) {
+func (r *voltmeterConfigResource) apply(ctx context.Context, plan voltmeterConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.VoltmeterConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
@@ -170,7 +177,11 @@ func (r *voltmeterConfigResource) Create(ctx context.Context, req resource.Creat
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -183,7 +194,11 @@ func (r *voltmeterConfigResource) Update(ctx context.Context, req resource.Updat
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.apply(plan, &resp.Diagnostics)
+	r.apply(ctx, plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	r.get(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
