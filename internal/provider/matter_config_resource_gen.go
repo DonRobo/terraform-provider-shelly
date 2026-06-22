@@ -4,7 +4,7 @@ package provider
 
 import (
 	"context"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -56,7 +56,7 @@ func (r *matterConfigResource) Read(ctx context.Context, req resource.ReadReques
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.MatterGetConfigRequest{}).Do(client)
+	got, _, err := (&components.MatterGetConfigRequest{}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -68,7 +68,7 @@ func (r *matterConfigResource) Read(ctx context.Context, req resource.ReadReques
 }
 
 func (r *matterConfigResource) apply(plan matterConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.MatterConfig
+	var cfg components.MatterConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
 		cfg.Enable = &v
@@ -76,7 +76,7 @@ func (r *matterConfigResource) apply(plan matterConfigResourceModel, diags *diag
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.MatterSetConfigRequest{Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.MatterSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

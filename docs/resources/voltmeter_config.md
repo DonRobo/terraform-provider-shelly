@@ -25,3 +25,12 @@ description: |-
 - `name` (String) Name of the Voltmeter instance. name length should not exceed 64 chars
 - `range` (Number) Input range, which is device-specific. See the table below.
 - `report_thr` (Number) Voltmeter report threshold in volts. Accepted range is device-specific
+- `xvoltage` (Attributes) (see [below for nested schema](#nestedatt--xvoltage))
+
+<a id="nestedatt--xvoltage"></a>
+### Nested Schema for `xvoltage`
+
+Optional:
+
+- `expr` (String) JS expression containg x, where x is the raw value to be transformed (status.voltage), for example "x+1". Accepted range: null or [0..100] chars. Both null and "" mean value transformation is disabled.
+- `unit` (String) Unit of the transformed value (status.xvoltage), for example "m/s". Accepted range: null or [0..20] chars. Both null and "" mean value transformation is disabled.

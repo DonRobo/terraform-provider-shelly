@@ -4,7 +4,7 @@ package provider
 
 import (
 	"context"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -99,7 +99,7 @@ func (r *mqttConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.MQTTGetConfigRequest{}).Do(client)
+	got, _, err := (&components.MQTTGetConfigRequest{}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -129,7 +129,7 @@ func (r *mqttConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 }
 
 func (r *mqttConfigResource) apply(plan mqttConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.MQTTConfig
+	var cfg components.MQTTConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
 		cfg.Enable = &v
@@ -161,7 +161,7 @@ func (r *mqttConfigResource) apply(plan mqttConfigResourceModel, diags *diag.Dia
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.MQTTSetConfigRequest{Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.MQTTSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

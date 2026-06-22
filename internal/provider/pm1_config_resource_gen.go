@@ -5,7 +5,7 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -69,7 +69,7 @@ func (r *pm1ConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.PM1GetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.PM1GetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -84,7 +84,7 @@ func (r *pm1ConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 }
 
 func (r *pm1ConfigResource) apply(plan pm1ConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.PM1Config
+	var cfg components.PM1Config
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
@@ -97,7 +97,7 @@ func (r *pm1ConfigResource) apply(plan pm1ConfigResourceModel, diags *diag.Diagn
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.PM1SetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.PM1SetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

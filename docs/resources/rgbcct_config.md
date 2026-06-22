@@ -29,4 +29,15 @@ description: |-
 - `initial_state` (String) Output state to set on power_on. Range of values: off, on, restore_last
 - `min_brightness_on_toggle` (Number) Brightness level (in percent) applied when there is a toggle and current brightness is lower than min_brightness_on_toggle.
 - `name` (String) Name of the RGBCCT instance
+- `night_mode` (Attributes) (see [below for nested schema](#nestedatt--night_mode))
 - `transition_duration` (Number) Transition time (in seconds) - time to change from 0% to 100% of brightness, RGB levels or color temperature value
+
+<a id="nestedatt--night_mode"></a>
+### Nested Schema for `night_mode`
+
+Optional:
+
+- `brightness` (Number) Brightness level limit (in percent) when night mode is active. null overrides night_mode.brightness with current brightness when night mode starts. Default value 50.
+- `ct` (Number) Color temperature level limit (in Kelvin) when night mode is active. null overrides night_mode.ct value with current ct value when night mode starts. Default value: 50% of ct_range. For DuoBulbG3: 4600
+- `enable` (Boolean) Enable or disable night mode
+- `mode` (String) Operating mode of the light output when night mode is active. Range of values: rgb, cct or null. null overrides night_mode.mode value with current mode when night mode starts. Default value: rgb

@@ -22,6 +22,64 @@ description: |-
 ### Optional
 
 - `enable` (Boolean) Enable or disable tracking sensor
+- `leds` (Attributes) (see [below for nested schema](#nestedatt--leds))
 - `main_zone` (String) Default presence zone key. (readonly)
+- `sensor` (Attributes) (see [below for nested schema](#nestedatt--sensor))
+- `ui` (Attributes) (see [below for nested schema](#nestedatt--ui))
 - `zmax` (Number) Upper detection limit in meters
 - `zmin` (Number) Lower detection limit in meters
+
+<a id="nestedatt--leds"></a>
+### Nested Schema for `leds`
+
+Optional:
+
+- `brightness` (Boolean) Max brightness of led
+- `night_mode` (Attributes) (see [below for nested schema](#nestedatt--leds--night_mode))
+
+<a id="nestedatt--leds--night_mode"></a>
+### Nested Schema for `leds.night_mode`
+
+Optional:
+
+- `brightness` (Number) Brightness level limit when night mode is active.
+- `enable` (Boolean) Enable or disable night mode
+
+
+
+<a id="nestedatt--sensor"></a>
+### Nested Schema for `sensor`
+
+Optional:
+
+- `flipped` (Boolean) Sensor is flipped by 180 degrees
+- `height` (Number) Mount height of sensor (in meters)
+- `max_velocity` (Number) Max velocity difference
+- `points` (Number) Object recognition threshold
+- `position` (String) Mount position of sensor in room can be 'left', 'center' or 'right'
+- `power` (String) Power of sensor. Can be 'low', 'medium' or 'high'
+- `sensitivity` (String) Sensor sensitivity. Can be 'low', 'medium' or 'high'
+- `snr` (Number) SNR threshold
+- `state` (Attributes) (see [below for nested schema](#nestedatt--sensor--state))
+- `tilt` (Number) Sensor vertical tilt (see note)
+- `velocity` (Number) Velocity threshold
+
+<a id="nestedatt--sensor--state"></a>
+### Nested Schema for `sensor.state`
+
+Optional:
+
+- `act_free_thr` (Number) Tracking loss threshold
+- `det_act_thr` (Number) Motion activation threshold
+- `det_free_thr` (Number) Motion release threshold
+- `sleep_free_thr` (Number) Stillness timeout threshold
+- `stat_free_thr` (Number) Stillness tracking threshold
+
+
+
+<a id="nestedatt--ui"></a>
+### Nested Schema for `ui`
+
+Optional:
+
+- `imperial` (Boolean) Units are in imeprial system, otherwise units are in metric system

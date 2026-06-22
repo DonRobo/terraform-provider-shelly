@@ -27,11 +27,32 @@ resource "shelly_switch_config" "example" {
 
 ### Required
 
-- `id` (Number) The zero-based ID of the switch to configure (e.g., 0 for the first switch).
+- `id` (Number) The ID of the Switch component instance.
 - `ip` (String) The IP address of the Shelly device.
 
 ### Optional
 
-- `in_mode` (String) Mode of the associated input
-- `initial_state` (String) Output state to set on power_on
-- `name` (String) Name of the switch instance.
+- `auto_off` (Boolean) True if the "Automatic OFF" function is enabled, false otherwise
+- `auto_off_delay` (Number) Seconds to pass until the component is switched back off
+- `auto_on` (Boolean) True if the "Automatic ON" function is enabled, false otherwise
+- `auto_on_delay` (Number) Seconds to pass until the component is switched back on
+- `autorecover_voltage_errors` (Boolean) True if switch output state should be restored after over/undervoltage error is cleared, false otherwise (shown if applicable)
+- `counts` (Attributes) (see [below for nested schema](#nestedatt--counts))
+- `current_limit` (Number) Number, limit (in Amperes) over which overcurrent condition occurs (shown if applicable)
+- `in_locked` (Boolean) If True, all changes to physical inputs are ignored, regardless of mode.
+- `in_mode` (String) Mode of the associated input. Range of values: momentary, follow, flip, detached, cycle (if applicable), activate (if applicable)
+- `initial_state` (String) Output state to set on power_on. Range of values: off, on, restore_last, match_input
+- `input_id` (Number) Id of the Input component which controls the Switch. Applicable only to Pro1, Pro1PM and 1LG3 devices. Valid values: 0, 1
+- `name` (String) Name of the switch instance
+- `power_limit` (Number) Limit (in Watts) over which overpower condition occurs (shown if applicable)
+- `reverse` (Boolean) Reverse measurement direction of active power and energy. setting the reverse option requires restart (shown if applicable)
+- `undervoltage_limit` (Number) Limit (in Volts) under which undervoltage condition occurs (shown if applicable)
+- `voltage_limit` (Number) Limit (in Volts) over which overvoltage condition occurs (shown if applicable)
+
+<a id="nestedatt--counts"></a>
+### Nested Schema for `counts`
+
+Optional:
+
+- `enable` (Boolean) Enable or disable the switch counters (shown if applicable)
+- `power_thr` (Number) Active power threshold (in Watts) over which on_above_thr counter is incremented. Default value 100. (shown if applicable)

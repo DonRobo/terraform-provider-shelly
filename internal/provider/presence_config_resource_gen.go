@@ -4,13 +4,14 @@ package provider
 
 import (
 	"context"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -26,12 +27,51 @@ func NewPresenceConfigResource() resource.Resource { return &presenceConfigResou
 
 type presenceConfigResource struct{}
 
+type presenceConfigSensorStateModel struct {
+	DetActThr    types.Float64 `tfsdk:"det_act_thr"`
+	DetFreeThr   types.Float64 `tfsdk:"det_free_thr"`
+	ActFreeThr   types.Float64 `tfsdk:"act_free_thr"`
+	StatFreeThr  types.Float64 `tfsdk:"stat_free_thr"`
+	SleepFreeThr types.Float64 `tfsdk:"sleep_free_thr"`
+}
+
+type presenceConfigSensorModel struct {
+	Flipped     types.Bool                      `tfsdk:"flipped"`
+	Height      types.Float64                   `tfsdk:"height"`
+	Tilt        types.Float64                   `tfsdk:"tilt"`
+	Points      types.Float64                   `tfsdk:"points"`
+	Velocity    types.Float64                   `tfsdk:"velocity"`
+	Snr         types.Float64                   `tfsdk:"snr"`
+	MaxVelocity types.Float64                   `tfsdk:"max_velocity"`
+	Position    types.String                    `tfsdk:"position"`
+	Power       types.String                    `tfsdk:"power"`
+	Sensitivity types.String                    `tfsdk:"sensitivity"`
+	State       *presenceConfigSensorStateModel `tfsdk:"state"`
+}
+
+type presenceConfigUIModel struct {
+	Imperial types.Bool `tfsdk:"imperial"`
+}
+
+type presenceConfigLedsNightModeModel struct {
+	Enable     types.Bool    `tfsdk:"enable"`
+	Brightness types.Float64 `tfsdk:"brightness"`
+}
+
+type presenceConfigLedsModel struct {
+	Brightness types.Bool                        `tfsdk:"brightness"`
+	NightMode  *presenceConfigLedsNightModeModel `tfsdk:"night_mode"`
+}
+
 type presenceConfigResourceModel struct {
-	IP       types.String  `tfsdk:"ip"`
-	Enable   types.Bool    `tfsdk:"enable"`
-	Zmin     types.Float64 `tfsdk:"zmin"`
-	Zmax     types.Float64 `tfsdk:"zmax"`
-	MainZone types.String  `tfsdk:"main_zone"`
+	IP       types.String               `tfsdk:"ip"`
+	Enable   types.Bool                 `tfsdk:"enable"`
+	Zmin     types.Float64              `tfsdk:"zmin"`
+	Zmax     types.Float64              `tfsdk:"zmax"`
+	Sensor   *presenceConfigSensorModel `tfsdk:"sensor"`
+	UI       *presenceConfigUIModel     `tfsdk:"ui"`
+	Leds     *presenceConfigLedsModel   `tfsdk:"leds"`
+	MainZone types.String               `tfsdk:"main_zone"`
 }
 
 func (r *presenceConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -60,6 +100,155 @@ func (r *presenceConfigResource) Schema(_ context.Context, _ resource.SchemaRequ
 				MarkdownDescription: "Upper detection limit in meters",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"sensor": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"flipped": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Sensor is flipped by 180 degrees",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"height": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Mount height of sensor (in meters)",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"tilt": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Sensor vertical tilt (see note)",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"points": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Object recognition threshold",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"velocity": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Velocity threshold",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"snr": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "SNR threshold",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"max_velocity": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Max velocity difference",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"position": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Mount position of sensor in room can be 'left', 'center' or 'right'",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"power": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Power of sensor. Can be 'low', 'medium' or 'high'",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"sensitivity": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Sensor sensitivity. Can be 'low', 'medium' or 'high'",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"state": schema.SingleNestedAttribute{
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+						Attributes: map[string]schema.Attribute{
+							"det_act_thr": schema.Float64Attribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Motion activation threshold",
+								PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+							},
+							"det_free_thr": schema.Float64Attribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Motion release threshold",
+								PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+							},
+							"act_free_thr": schema.Float64Attribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Tracking loss threshold",
+								PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+							},
+							"stat_free_thr": schema.Float64Attribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Stillness tracking threshold",
+								PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+							},
+							"sleep_free_thr": schema.Float64Attribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Stillness timeout threshold",
+								PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+							},
+						},
+					},
+				},
+			},
+			"ui": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"imperial": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Units are in imeprial system, otherwise units are in metric system",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+				},
+			},
+			"leds": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"brightness": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Max brightness of led",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"night_mode": schema.SingleNestedAttribute{
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+						Attributes: map[string]schema.Attribute{
+							"enable": schema.BoolAttribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Enable or disable night mode",
+								PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+							},
+							"brightness": schema.Float64Attribute{
+								Optional:            true,
+								Computed:            true,
+								MarkdownDescription: "Brightness level limit when night mode is active.",
+								PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+							},
+						},
+					},
+				},
+			},
 			"main_zone": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -79,7 +268,7 @@ func (r *presenceConfigResource) Read(ctx context.Context, req resource.ReadRequ
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.PresenceGetConfigRequest{}).Do(client)
+	got, _, err := (&components.PresenceGetConfigRequest{}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -93,6 +282,88 @@ func (r *presenceConfigResource) Read(ctx context.Context, req resource.ReadRequ
 	if got.Zmax != nil {
 		state.Zmax = types.Float64Value(*got.Zmax)
 	}
+	if got.Sensor != nil {
+		if state.Sensor == nil {
+			state.Sensor = &presenceConfigSensorModel{}
+		}
+		if got.Sensor.Flipped != nil {
+			state.Sensor.Flipped = types.BoolValue(*got.Sensor.Flipped)
+		}
+		if got.Sensor.Height != nil {
+			state.Sensor.Height = types.Float64Value(*got.Sensor.Height)
+		}
+		if got.Sensor.Tilt != nil {
+			state.Sensor.Tilt = types.Float64Value(*got.Sensor.Tilt)
+		}
+		if got.Sensor.Points != nil {
+			state.Sensor.Points = types.Float64Value(*got.Sensor.Points)
+		}
+		if got.Sensor.Velocity != nil {
+			state.Sensor.Velocity = types.Float64Value(*got.Sensor.Velocity)
+		}
+		if got.Sensor.Snr != nil {
+			state.Sensor.Snr = types.Float64Value(*got.Sensor.Snr)
+		}
+		if got.Sensor.MaxVelocity != nil {
+			state.Sensor.MaxVelocity = types.Float64Value(*got.Sensor.MaxVelocity)
+		}
+		if got.Sensor.Position != nil {
+			state.Sensor.Position = types.StringValue(*got.Sensor.Position)
+		}
+		if got.Sensor.Power != nil {
+			state.Sensor.Power = types.StringValue(*got.Sensor.Power)
+		}
+		if got.Sensor.Sensitivity != nil {
+			state.Sensor.Sensitivity = types.StringValue(*got.Sensor.Sensitivity)
+		}
+		if got.Sensor.State != nil {
+			if state.Sensor.State == nil {
+				state.Sensor.State = &presenceConfigSensorStateModel{}
+			}
+			if got.Sensor.State.DetActThr != nil {
+				state.Sensor.State.DetActThr = types.Float64Value(*got.Sensor.State.DetActThr)
+			}
+			if got.Sensor.State.DetFreeThr != nil {
+				state.Sensor.State.DetFreeThr = types.Float64Value(*got.Sensor.State.DetFreeThr)
+			}
+			if got.Sensor.State.ActFreeThr != nil {
+				state.Sensor.State.ActFreeThr = types.Float64Value(*got.Sensor.State.ActFreeThr)
+			}
+			if got.Sensor.State.StatFreeThr != nil {
+				state.Sensor.State.StatFreeThr = types.Float64Value(*got.Sensor.State.StatFreeThr)
+			}
+			if got.Sensor.State.SleepFreeThr != nil {
+				state.Sensor.State.SleepFreeThr = types.Float64Value(*got.Sensor.State.SleepFreeThr)
+			}
+		}
+	}
+	if got.UI != nil {
+		if state.UI == nil {
+			state.UI = &presenceConfigUIModel{}
+		}
+		if got.UI.Imperial != nil {
+			state.UI.Imperial = types.BoolValue(*got.UI.Imperial)
+		}
+	}
+	if got.Leds != nil {
+		if state.Leds == nil {
+			state.Leds = &presenceConfigLedsModel{}
+		}
+		if got.Leds.Brightness != nil {
+			state.Leds.Brightness = types.BoolValue(*got.Leds.Brightness)
+		}
+		if got.Leds.NightMode != nil {
+			if state.Leds.NightMode == nil {
+				state.Leds.NightMode = &presenceConfigLedsNightModeModel{}
+			}
+			if got.Leds.NightMode.Enable != nil {
+				state.Leds.NightMode.Enable = types.BoolValue(*got.Leds.NightMode.Enable)
+			}
+			if got.Leds.NightMode.Brightness != nil {
+				state.Leds.NightMode.Brightness = types.Float64Value(*got.Leds.NightMode.Brightness)
+			}
+		}
+	}
 	if got.MainZone != nil {
 		state.MainZone = types.StringValue(*got.MainZone)
 	}
@@ -100,7 +371,7 @@ func (r *presenceConfigResource) Read(ctx context.Context, req resource.ReadRequ
 }
 
 func (r *presenceConfigResource) apply(plan presenceConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.PresenceConfig
+	var cfg components.PresenceConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
 		cfg.Enable = &v
@@ -113,6 +384,97 @@ func (r *presenceConfigResource) apply(plan presenceConfigResourceModel, diags *
 		v := plan.Zmax.ValueFloat64()
 		cfg.Zmax = &v
 	}
+	if plan.Sensor != nil {
+		cfg.Sensor = &components.PresenceConfigSensor{}
+		if !plan.Sensor.Flipped.IsNull() && !plan.Sensor.Flipped.IsUnknown() {
+			v := plan.Sensor.Flipped.ValueBool()
+			cfg.Sensor.Flipped = &v
+		}
+		if !plan.Sensor.Height.IsNull() && !plan.Sensor.Height.IsUnknown() {
+			v := plan.Sensor.Height.ValueFloat64()
+			cfg.Sensor.Height = &v
+		}
+		if !plan.Sensor.Tilt.IsNull() && !plan.Sensor.Tilt.IsUnknown() {
+			v := plan.Sensor.Tilt.ValueFloat64()
+			cfg.Sensor.Tilt = &v
+		}
+		if !plan.Sensor.Points.IsNull() && !plan.Sensor.Points.IsUnknown() {
+			v := plan.Sensor.Points.ValueFloat64()
+			cfg.Sensor.Points = &v
+		}
+		if !plan.Sensor.Velocity.IsNull() && !plan.Sensor.Velocity.IsUnknown() {
+			v := plan.Sensor.Velocity.ValueFloat64()
+			cfg.Sensor.Velocity = &v
+		}
+		if !plan.Sensor.Snr.IsNull() && !plan.Sensor.Snr.IsUnknown() {
+			v := plan.Sensor.Snr.ValueFloat64()
+			cfg.Sensor.Snr = &v
+		}
+		if !plan.Sensor.MaxVelocity.IsNull() && !plan.Sensor.MaxVelocity.IsUnknown() {
+			v := plan.Sensor.MaxVelocity.ValueFloat64()
+			cfg.Sensor.MaxVelocity = &v
+		}
+		if !plan.Sensor.Position.IsNull() && !plan.Sensor.Position.IsUnknown() {
+			v := plan.Sensor.Position.ValueString()
+			cfg.Sensor.Position = &v
+		}
+		if !plan.Sensor.Power.IsNull() && !plan.Sensor.Power.IsUnknown() {
+			v := plan.Sensor.Power.ValueString()
+			cfg.Sensor.Power = &v
+		}
+		if !plan.Sensor.Sensitivity.IsNull() && !plan.Sensor.Sensitivity.IsUnknown() {
+			v := plan.Sensor.Sensitivity.ValueString()
+			cfg.Sensor.Sensitivity = &v
+		}
+		if plan.Sensor.State != nil {
+			cfg.Sensor.State = &components.PresenceConfigSensorState{}
+			if !plan.Sensor.State.DetActThr.IsNull() && !plan.Sensor.State.DetActThr.IsUnknown() {
+				v := plan.Sensor.State.DetActThr.ValueFloat64()
+				cfg.Sensor.State.DetActThr = &v
+			}
+			if !plan.Sensor.State.DetFreeThr.IsNull() && !plan.Sensor.State.DetFreeThr.IsUnknown() {
+				v := plan.Sensor.State.DetFreeThr.ValueFloat64()
+				cfg.Sensor.State.DetFreeThr = &v
+			}
+			if !plan.Sensor.State.ActFreeThr.IsNull() && !plan.Sensor.State.ActFreeThr.IsUnknown() {
+				v := plan.Sensor.State.ActFreeThr.ValueFloat64()
+				cfg.Sensor.State.ActFreeThr = &v
+			}
+			if !plan.Sensor.State.StatFreeThr.IsNull() && !plan.Sensor.State.StatFreeThr.IsUnknown() {
+				v := plan.Sensor.State.StatFreeThr.ValueFloat64()
+				cfg.Sensor.State.StatFreeThr = &v
+			}
+			if !plan.Sensor.State.SleepFreeThr.IsNull() && !plan.Sensor.State.SleepFreeThr.IsUnknown() {
+				v := plan.Sensor.State.SleepFreeThr.ValueFloat64()
+				cfg.Sensor.State.SleepFreeThr = &v
+			}
+		}
+	}
+	if plan.UI != nil {
+		cfg.UI = &components.PresenceConfigUI{}
+		if !plan.UI.Imperial.IsNull() && !plan.UI.Imperial.IsUnknown() {
+			v := plan.UI.Imperial.ValueBool()
+			cfg.UI.Imperial = &v
+		}
+	}
+	if plan.Leds != nil {
+		cfg.Leds = &components.PresenceConfigLeds{}
+		if !plan.Leds.Brightness.IsNull() && !plan.Leds.Brightness.IsUnknown() {
+			v := plan.Leds.Brightness.ValueBool()
+			cfg.Leds.Brightness = &v
+		}
+		if plan.Leds.NightMode != nil {
+			cfg.Leds.NightMode = &components.PresenceConfigLedsNightMode{}
+			if !plan.Leds.NightMode.Enable.IsNull() && !plan.Leds.NightMode.Enable.IsUnknown() {
+				v := plan.Leds.NightMode.Enable.ValueBool()
+				cfg.Leds.NightMode.Enable = &v
+			}
+			if !plan.Leds.NightMode.Brightness.IsNull() && !plan.Leds.NightMode.Brightness.IsUnknown() {
+				v := plan.Leds.NightMode.Brightness.ValueFloat64()
+				cfg.Leds.NightMode.Brightness = &v
+			}
+		}
+	}
 	if !plan.MainZone.IsNull() && !plan.MainZone.IsUnknown() {
 		v := plan.MainZone.ValueString()
 		cfg.MainZone = &v
@@ -120,7 +482,7 @@ func (r *presenceConfigResource) apply(plan presenceConfigResourceModel, diags *
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.PresenceSetConfigRequest{Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.PresenceSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

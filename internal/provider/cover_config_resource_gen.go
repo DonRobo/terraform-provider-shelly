@@ -5,13 +5,14 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -29,18 +30,48 @@ func NewCoverConfigResource() resource.Resource { return &coverConfigResource{} 
 
 type coverConfigResource struct{}
 
+type coverConfigMotorModel struct {
+	IdlePowerThr      types.Float64 `tfsdk:"idle_power_thr"`
+	IdleConfirmPeriod types.Float64 `tfsdk:"idle_confirm_period"`
+}
+
+type coverConfigObstructionDetectionModel struct {
+	Enable    types.Bool    `tfsdk:"enable"`
+	Direction types.String  `tfsdk:"direction"`
+	PowerThr  types.Float64 `tfsdk:"power_thr"`
+	Holdoff   types.Float64 `tfsdk:"holdoff"`
+}
+
+type coverConfigSafetySwitchModel struct {
+	Enable    types.Bool   `tfsdk:"enable"`
+	Direction types.String `tfsdk:"direction"`
+}
+
+type coverConfigSlatModel struct {
+	Enable     types.Bool    `tfsdk:"enable"`
+	OpenTime   types.Float64 `tfsdk:"open_time"`
+	CloseTime  types.Float64 `tfsdk:"close_time"`
+	Step       types.Float64 `tfsdk:"step"`
+	RetainPos  types.Bool    `tfsdk:"retain_pos"`
+	PreciseCtl types.Bool    `tfsdk:"precise_ctl"`
+}
+
 type coverConfigResourceModel struct {
-	IP                types.String  `tfsdk:"ip"`
-	ID                types.Int64   `tfsdk:"id"`
-	Name              types.String  `tfsdk:"name"`
-	InLocked          types.Bool    `tfsdk:"in_locked"`
-	InitialState      types.String  `tfsdk:"initial_state"`
-	PowerLimit        types.Float64 `tfsdk:"power_limit"`
-	VoltageLimit      types.Float64 `tfsdk:"voltage_limit"`
-	UndervoltageLimit types.Float64 `tfsdk:"undervoltage_limit"`
-	CurrentLimit      types.Float64 `tfsdk:"current_limit"`
-	MaxtimeOpen       types.Float64 `tfsdk:"maxtime_open"`
-	MaxtimeClose      types.Float64 `tfsdk:"maxtime_close"`
+	IP                   types.String                          `tfsdk:"ip"`
+	ID                   types.Int64                           `tfsdk:"id"`
+	Name                 types.String                          `tfsdk:"name"`
+	InLocked             types.Bool                            `tfsdk:"in_locked"`
+	InitialState         types.String                          `tfsdk:"initial_state"`
+	PowerLimit           types.Float64                         `tfsdk:"power_limit"`
+	VoltageLimit         types.Float64                         `tfsdk:"voltage_limit"`
+	UndervoltageLimit    types.Float64                         `tfsdk:"undervoltage_limit"`
+	CurrentLimit         types.Float64                         `tfsdk:"current_limit"`
+	Motor                *coverConfigMotorModel                `tfsdk:"motor"`
+	MaxtimeOpen          types.Float64                         `tfsdk:"maxtime_open"`
+	MaxtimeClose         types.Float64                         `tfsdk:"maxtime_close"`
+	ObstructionDetection *coverConfigObstructionDetectionModel `tfsdk:"obstruction_detection"`
+	SafetySwitch         *coverConfigSafetySwitchModel         `tfsdk:"safety_switch"`
+	Slat                 *coverConfigSlatModel                 `tfsdk:"slat"`
 }
 
 func (r *coverConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -94,6 +125,25 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				MarkdownDescription: "Amperes, a limit that must be exceeded to trigger an overcurrent error",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"motor": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"idle_power_thr": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Watts, threshold below which the motor is considered stopped",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"idle_confirm_period": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Seconds, the minimum period of time in idle state before the state is confirmed",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 			"maxtime_open": schema.Float64Attribute{
 				Optional:            true,
 				Computed:            true,
@@ -105,6 +155,99 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Computed:            true,
 				MarkdownDescription: "Default timeout after which Cover will stop moving in a close direction",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+			},
+			"obstruction_detection": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"enable": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "true when obstruction detection is enabled, false otherwise",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"direction": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "The direction of motion for which the safety switch should be monitored, one of open, close, both",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"power_thr": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Watts, power consumption above this threshold should be interpreted as objects obstructing Cover movement. This property is editable at any time, but note that during the cover calibration procedure (Cover.Calibrate), power_thr will be automatically set to the peak power consumption + 15%, overwriting the current value. The automatic setup of power_thr during calibration will only start tracking power values when the holdoff time (see below) has elapsed",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"holdoff": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Seconds, time to wait after Cover starts moving before obstruction detection is activated (to avoid false detections because of the initial power consumption spike)",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+				},
+			},
+			"safety_switch": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"enable": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "true when the safety switch is enabled, false otherwise",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"direction": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "The direction of motion for which the safety switch should be monitored, one of open, close, both",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+				},
+			},
+			"slat": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"enable": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "true when slat control is enabled, false otherwise",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"open_time": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Time it takes for slats to move from fully closed (0%) to fully open (100%) position, seconds. Must be manually configured by the user. Accepted range: [0.5..30]s",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"close_time": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Time it takes for slats to move from fully open (100%) to fully closed (100%) position, seconds. Must be manually configured by the user. Accepted range: [0.5..30]s",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"step": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Single step movement spread, represented as % from the full range (used only when slats are controlled via inputs). Accepted range: [1..100]%",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"retain_pos": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Whether to retain slat position when cover (vertical) position is changed",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+					"precise_ctl": schema.BoolAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "This property only applies when cover (vertical) position is less than one full slat rotation away from the fully closed position. If this condition is met, any slat movement will always go through fully closed position first. This improves slat positioning accuracy, yet is slower to execute.",
+						PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+					},
+				},
 			},
 		},
 	}
@@ -119,7 +262,7 @@ func (r *coverConfigResource) Read(ctx context.Context, req resource.ReadRequest
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.CoverGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.CoverGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -145,17 +288,79 @@ func (r *coverConfigResource) Read(ctx context.Context, req resource.ReadRequest
 	if got.CurrentLimit != nil {
 		state.CurrentLimit = types.Float64Value(*got.CurrentLimit)
 	}
+	if got.Motor != nil {
+		if state.Motor == nil {
+			state.Motor = &coverConfigMotorModel{}
+		}
+		if got.Motor.IdlePowerThr != nil {
+			state.Motor.IdlePowerThr = types.Float64Value(*got.Motor.IdlePowerThr)
+		}
+		if got.Motor.IdleConfirmPeriod != nil {
+			state.Motor.IdleConfirmPeriod = types.Float64Value(*got.Motor.IdleConfirmPeriod)
+		}
+	}
 	if got.MaxtimeOpen != nil {
 		state.MaxtimeOpen = types.Float64Value(*got.MaxtimeOpen)
 	}
 	if got.MaxtimeClose != nil {
 		state.MaxtimeClose = types.Float64Value(*got.MaxtimeClose)
 	}
+	if got.ObstructionDetection != nil {
+		if state.ObstructionDetection == nil {
+			state.ObstructionDetection = &coverConfigObstructionDetectionModel{}
+		}
+		if got.ObstructionDetection.Enable != nil {
+			state.ObstructionDetection.Enable = types.BoolValue(*got.ObstructionDetection.Enable)
+		}
+		if got.ObstructionDetection.Direction != nil {
+			state.ObstructionDetection.Direction = types.StringValue(*got.ObstructionDetection.Direction)
+		}
+		if got.ObstructionDetection.PowerThr != nil {
+			state.ObstructionDetection.PowerThr = types.Float64Value(*got.ObstructionDetection.PowerThr)
+		}
+		if got.ObstructionDetection.Holdoff != nil {
+			state.ObstructionDetection.Holdoff = types.Float64Value(*got.ObstructionDetection.Holdoff)
+		}
+	}
+	if got.SafetySwitch != nil {
+		if state.SafetySwitch == nil {
+			state.SafetySwitch = &coverConfigSafetySwitchModel{}
+		}
+		if got.SafetySwitch.Enable != nil {
+			state.SafetySwitch.Enable = types.BoolValue(*got.SafetySwitch.Enable)
+		}
+		if got.SafetySwitch.Direction != nil {
+			state.SafetySwitch.Direction = types.StringValue(*got.SafetySwitch.Direction)
+		}
+	}
+	if got.Slat != nil {
+		if state.Slat == nil {
+			state.Slat = &coverConfigSlatModel{}
+		}
+		if got.Slat.Enable != nil {
+			state.Slat.Enable = types.BoolValue(*got.Slat.Enable)
+		}
+		if got.Slat.OpenTime != nil {
+			state.Slat.OpenTime = types.Float64Value(*got.Slat.OpenTime)
+		}
+		if got.Slat.CloseTime != nil {
+			state.Slat.CloseTime = types.Float64Value(*got.Slat.CloseTime)
+		}
+		if got.Slat.Step != nil {
+			state.Slat.Step = types.Float64Value(*got.Slat.Step)
+		}
+		if got.Slat.RetainPos != nil {
+			state.Slat.RetainPos = types.BoolValue(*got.Slat.RetainPos)
+		}
+		if got.Slat.PreciseCtl != nil {
+			state.Slat.PreciseCtl = types.BoolValue(*got.Slat.PreciseCtl)
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *coverConfigResource) apply(plan coverConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.CoverConfig
+	var cfg components.CoverConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
@@ -185,6 +390,17 @@ func (r *coverConfigResource) apply(plan coverConfigResourceModel, diags *diag.D
 		v := plan.CurrentLimit.ValueFloat64()
 		cfg.CurrentLimit = &v
 	}
+	if plan.Motor != nil {
+		cfg.Motor = &components.CoverConfigMotor{}
+		if !plan.Motor.IdlePowerThr.IsNull() && !plan.Motor.IdlePowerThr.IsUnknown() {
+			v := plan.Motor.IdlePowerThr.ValueFloat64()
+			cfg.Motor.IdlePowerThr = &v
+		}
+		if !plan.Motor.IdleConfirmPeriod.IsNull() && !plan.Motor.IdleConfirmPeriod.IsUnknown() {
+			v := plan.Motor.IdleConfirmPeriod.ValueFloat64()
+			cfg.Motor.IdleConfirmPeriod = &v
+		}
+	}
 	if !plan.MaxtimeOpen.IsNull() && !plan.MaxtimeOpen.IsUnknown() {
 		v := plan.MaxtimeOpen.ValueFloat64()
 		cfg.MaxtimeOpen = &v
@@ -193,10 +409,67 @@ func (r *coverConfigResource) apply(plan coverConfigResourceModel, diags *diag.D
 		v := plan.MaxtimeClose.ValueFloat64()
 		cfg.MaxtimeClose = &v
 	}
+	if plan.ObstructionDetection != nil {
+		cfg.ObstructionDetection = &components.CoverConfigObstructionDetection{}
+		if !plan.ObstructionDetection.Enable.IsNull() && !plan.ObstructionDetection.Enable.IsUnknown() {
+			v := plan.ObstructionDetection.Enable.ValueBool()
+			cfg.ObstructionDetection.Enable = &v
+		}
+		if !plan.ObstructionDetection.Direction.IsNull() && !plan.ObstructionDetection.Direction.IsUnknown() {
+			v := plan.ObstructionDetection.Direction.ValueString()
+			cfg.ObstructionDetection.Direction = &v
+		}
+		if !plan.ObstructionDetection.PowerThr.IsNull() && !plan.ObstructionDetection.PowerThr.IsUnknown() {
+			v := plan.ObstructionDetection.PowerThr.ValueFloat64()
+			cfg.ObstructionDetection.PowerThr = &v
+		}
+		if !plan.ObstructionDetection.Holdoff.IsNull() && !plan.ObstructionDetection.Holdoff.IsUnknown() {
+			v := plan.ObstructionDetection.Holdoff.ValueFloat64()
+			cfg.ObstructionDetection.Holdoff = &v
+		}
+	}
+	if plan.SafetySwitch != nil {
+		cfg.SafetySwitch = &components.CoverConfigSafetySwitch{}
+		if !plan.SafetySwitch.Enable.IsNull() && !plan.SafetySwitch.Enable.IsUnknown() {
+			v := plan.SafetySwitch.Enable.ValueBool()
+			cfg.SafetySwitch.Enable = &v
+		}
+		if !plan.SafetySwitch.Direction.IsNull() && !plan.SafetySwitch.Direction.IsUnknown() {
+			v := plan.SafetySwitch.Direction.ValueString()
+			cfg.SafetySwitch.Direction = &v
+		}
+	}
+	if plan.Slat != nil {
+		cfg.Slat = &components.CoverConfigSlat{}
+		if !plan.Slat.Enable.IsNull() && !plan.Slat.Enable.IsUnknown() {
+			v := plan.Slat.Enable.ValueBool()
+			cfg.Slat.Enable = &v
+		}
+		if !plan.Slat.OpenTime.IsNull() && !plan.Slat.OpenTime.IsUnknown() {
+			v := plan.Slat.OpenTime.ValueFloat64()
+			cfg.Slat.OpenTime = &v
+		}
+		if !plan.Slat.CloseTime.IsNull() && !plan.Slat.CloseTime.IsUnknown() {
+			v := plan.Slat.CloseTime.ValueFloat64()
+			cfg.Slat.CloseTime = &v
+		}
+		if !plan.Slat.Step.IsNull() && !plan.Slat.Step.IsUnknown() {
+			v := plan.Slat.Step.ValueFloat64()
+			cfg.Slat.Step = &v
+		}
+		if !plan.Slat.RetainPos.IsNull() && !plan.Slat.RetainPos.IsUnknown() {
+			v := plan.Slat.RetainPos.ValueBool()
+			cfg.Slat.RetainPos = &v
+		}
+		if !plan.Slat.PreciseCtl.IsNull() && !plan.Slat.PreciseCtl.IsUnknown() {
+			v := plan.Slat.PreciseCtl.ValueBool()
+			cfg.Slat.PreciseCtl = &v
+		}
+	}
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.CoverSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.CoverSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

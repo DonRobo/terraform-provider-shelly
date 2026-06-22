@@ -7,10 +7,12 @@ import "github.com/hashicorp/terraform-plugin-framework/resource"
 // generatedConfigResources are the config resources emitted from the Shelly API docs.
 func generatedConfigResources() []func() resource.Resource {
 	return []func() resource.Resource{
+		NewBLEConfigResource,
 		NewCCTConfigResource,
 		NewCloudConfigResource,
 		NewCoverConfigResource,
 		NewDALIConfigResource,
+		NewDevicePowerConfigResource,
 		NewEMConfigResource,
 		NewEM1ConfigResource,
 		NewEM1DataConfigResource,
@@ -19,6 +21,7 @@ func generatedConfigResources() []func() resource.Resource {
 		NewFloodConfigResource,
 		NewHumidityConfigResource,
 		NewIlluminanceConfigResource,
+		NewInputConfigResource,
 		NewLightConfigResource,
 		NewMatterConfigResource,
 		NewModbusConfigResource,
@@ -33,9 +36,12 @@ func generatedConfigResources() []func() resource.Resource {
 		NewScriptConfigResource,
 		NewSerialConfigResource,
 		NewSmokeConfigResource,
+		NewSwitchConfigResource,
+		NewSysConfigResource,
 		NewTemperatureConfigResource,
 		NewUiConfigResource,
 		NewVoltmeterConfigResource,
+		NewWifiConfigResource,
 		NewWsConfigResource,
 		NewZigbeeConfigResource,
 	}

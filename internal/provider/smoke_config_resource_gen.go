@@ -5,7 +5,7 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -61,7 +61,7 @@ func (r *smokeConfigResource) Read(ctx context.Context, req resource.ReadRequest
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.SmokeGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
+	got, _, err := (&components.SmokeGetConfigRequest{ID: int(state.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -73,7 +73,7 @@ func (r *smokeConfigResource) Read(ctx context.Context, req resource.ReadRequest
 }
 
 func (r *smokeConfigResource) apply(plan smokeConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.SmokeConfig
+	var cfg components.SmokeConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
@@ -82,7 +82,7 @@ func (r *smokeConfigResource) apply(plan smokeConfigResourceModel, diags *diag.D
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.SmokeSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.SmokeSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }

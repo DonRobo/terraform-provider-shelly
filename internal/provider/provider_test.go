@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +30,12 @@ func TestSysConfigResourceSchema(t *testing.T) {
 	require.NotNil(t, resp.Schema)
 	reqAttrs := resp.Schema.Attributes
 	require.Contains(t, reqAttrs, "ip")
-	require.Contains(t, reqAttrs, "name")
+	// Sys config is nested: name/eco_mode live under the "device" object.
+	require.Contains(t, reqAttrs, "device")
+	device, ok := reqAttrs["device"].(schema.SingleNestedAttribute)
+	require.True(t, ok)
+	require.Contains(t, device.Attributes, "name")
+	require.Contains(t, device.Attributes, "eco_mode")
 }
 
 func TestInputConfigResourceSchema(t *testing.T) {

@@ -22,3 +22,12 @@ description: |-
 ### Optional
 
 - `cg_count` (Number) Number of scanned control gears (null if scan has never been executed)
+- `scan` (Attributes) (see [below for nested schema](#nestedatt--scan))
+
+<a id="nestedatt--scan"></a>
+### Nested Schema for `scan`
+
+Optional:
+
+- `cg_count` (Number) Number of found control gears during scan
+- `started_at` (Number) Unix timestamp, start time of the scan process (in UTC)

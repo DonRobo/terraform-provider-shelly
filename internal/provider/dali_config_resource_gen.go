@@ -4,12 +4,13 @@ package provider
 
 import (
 	"context"
-	"github.com/DonRobo/shelly-go"
+	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"resty.dev/v3"
@@ -24,9 +25,15 @@ func NewDALIConfigResource() resource.Resource { return &daliConfigResource{} }
 
 type daliConfigResource struct{}
 
+type daliConfigScanModel struct {
+	CgCount   types.Float64 `tfsdk:"cg_count"`
+	StartedAt types.Float64 `tfsdk:"started_at"`
+}
+
 type daliConfigResourceModel struct {
-	IP      types.String  `tfsdk:"ip"`
-	CgCount types.Float64 `tfsdk:"cg_count"`
+	IP      types.String         `tfsdk:"ip"`
+	CgCount types.Float64        `tfsdk:"cg_count"`
+	Scan    *daliConfigScanModel `tfsdk:"scan"`
 }
 
 func (r *daliConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -43,6 +50,25 @@ func (r *daliConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				MarkdownDescription: "Number of scanned control gears (null if scan has never been executed)",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"scan": schema.SingleNestedAttribute{
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.UseStateForUnknown()},
+				Attributes: map[string]schema.Attribute{
+					"cg_count": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Number of found control gears during scan",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+					"started_at": schema.Float64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Unix timestamp, start time of the scan process (in UTC)",
+						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+					},
+				},
+			},
 		},
 	}
 }
@@ -56,7 +82,7 @@ func (r *daliConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + state.IP.ValueString())
-	got, _, err := (&shelly.DALIGetConfigRequest{}).Do(client)
+	got, _, err := (&components.DALIGetConfigRequest{}).Do(client)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read config", err.Error())
 		return
@@ -64,19 +90,41 @@ func (r *daliConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 	if got.CgCount != nil {
 		state.CgCount = types.Float64Value(*got.CgCount)
 	}
+	if got.Scan != nil {
+		if state.Scan == nil {
+			state.Scan = &daliConfigScanModel{}
+		}
+		if got.Scan.CgCount != nil {
+			state.Scan.CgCount = types.Float64Value(*got.Scan.CgCount)
+		}
+		if got.Scan.StartedAt != nil {
+			state.Scan.StartedAt = types.Float64Value(*got.Scan.StartedAt)
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *daliConfigResource) apply(plan daliConfigResourceModel, diags *diag.Diagnostics) {
-	var cfg shelly.DALIConfig
+	var cfg components.DALIConfig
 	if !plan.CgCount.IsNull() && !plan.CgCount.IsUnknown() {
 		v := plan.CgCount.ValueFloat64()
 		cfg.CgCount = &v
 	}
+	if plan.Scan != nil {
+		cfg.Scan = &components.DALIConfigScan{}
+		if !plan.Scan.CgCount.IsNull() && !plan.Scan.CgCount.IsUnknown() {
+			v := plan.Scan.CgCount.ValueFloat64()
+			cfg.Scan.CgCount = &v
+		}
+		if !plan.Scan.StartedAt.IsNull() && !plan.Scan.StartedAt.IsUnknown() {
+			v := plan.Scan.StartedAt.ValueFloat64()
+			cfg.Scan.StartedAt = &v
+		}
+	}
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + plan.IP.ValueString())
-	if _, _, err := (&shelly.DALISetConfigRequest{Config: cfg}).Do(client); err != nil {
+	if _, _, err := (&components.DALISetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
 }
