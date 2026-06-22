@@ -5,7 +5,7 @@ go 1.25.0
 toolchain go1.26.4
 
 require (
-	github.com/DonRobo/shelly-go v0.0.0-20260622131612-6822d11abec6
+	github.com/DonRobo/shelly-go v0.2.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/stretchr/testify v1.11.1
