@@ -78,12 +78,18 @@ func (r *illuminanceConfigResource) get(ctx context.Context, m *illuminanceConfi
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.DarkThr != nil {
 		m.DarkThr = types.Float64Value(*got.DarkThr)
+	} else if m.DarkThr.IsUnknown() {
+		m.DarkThr = types.Float64Null()
 	}
 	if got.BrightThr != nil {
 		m.BrightThr = types.Float64Value(*got.BrightThr)
+	} else if m.BrightThr.IsUnknown() {
+		m.BrightThr = types.Float64Null()
 	}
 }
 

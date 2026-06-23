@@ -63,6 +63,8 @@ func (r *smokeConfigResource) get(ctx context.Context, m *smokeConfigResourceMod
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 }
 

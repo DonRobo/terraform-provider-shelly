@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -57,21 +59,51 @@ type emConfigAlarmsCModel struct {
 }
 
 type emConfigAlarmsModel struct {
-	A *emConfigAlarmsAModel `tfsdk:"a"`
-	B *emConfigAlarmsBModel `tfsdk:"b"`
-	C *emConfigAlarmsCModel `tfsdk:"c"`
+	A types.Object `tfsdk:"a"`
+	B types.Object `tfsdk:"b"`
+	C types.Object `tfsdk:"c"`
 }
 
 type emConfigResourceModel struct {
-	IP                   types.String          `tfsdk:"ip"`
-	ID                   types.Int64           `tfsdk:"id"`
-	Name                 types.String          `tfsdk:"name"`
-	BlinkModeSelector    types.String          `tfsdk:"blink_mode_selector"`
-	PhaseSelector        types.String          `tfsdk:"phase_selector"`
-	MonitorPhaseSequence types.Bool            `tfsdk:"monitor_phase_sequence"`
-	Reverse              *emConfigReverseModel `tfsdk:"reverse"`
-	Alarms               *emConfigAlarmsModel  `tfsdk:"alarms"`
-	CtType               types.String          `tfsdk:"ct_type"`
+	IP                   types.String `tfsdk:"ip"`
+	ID                   types.Int64  `tfsdk:"id"`
+	Name                 types.String `tfsdk:"name"`
+	BlinkModeSelector    types.String `tfsdk:"blink_mode_selector"`
+	PhaseSelector        types.String `tfsdk:"phase_selector"`
+	MonitorPhaseSequence types.Bool   `tfsdk:"monitor_phase_sequence"`
+	Reverse              types.Object `tfsdk:"reverse"`
+	Alarms               types.Object `tfsdk:"alarms"`
+	CtType               types.String `tfsdk:"ct_type"`
+}
+
+var emConfigReverseAttrTypes = map[string]attr.Type{
+	"a": types.BoolType,
+	"b": types.BoolType,
+	"c": types.BoolType,
+}
+
+var emConfigAlarmsAAttrTypes = map[string]attr.Type{
+	"voltage": types.ListType{ElemType: types.Float64Type},
+	"current": types.ListType{ElemType: types.Float64Type},
+	"power":   types.ListType{ElemType: types.Float64Type},
+}
+
+var emConfigAlarmsBAttrTypes = map[string]attr.Type{
+	"voltage": types.ListType{ElemType: types.Float64Type},
+	"current": types.ListType{ElemType: types.Float64Type},
+	"power":   types.ListType{ElemType: types.Float64Type},
+}
+
+var emConfigAlarmsCAttrTypes = map[string]attr.Type{
+	"voltage": types.ListType{ElemType: types.Float64Type},
+	"current": types.ListType{ElemType: types.Float64Type},
+	"power":   types.ListType{ElemType: types.Float64Type},
+}
+
+var emConfigAlarmsAttrTypes = map[string]attr.Type{
+	"a": types.ObjectType{AttrTypes: emConfigAlarmsAAttrTypes},
+	"b": types.ObjectType{AttrTypes: emConfigAlarmsBAttrTypes},
+	"c": types.ObjectType{AttrTypes: emConfigAlarmsCAttrTypes},
 }
 
 func (r *emConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -246,97 +278,161 @@ func (r *emConfigResource) get(ctx context.Context, m *emConfigResourceModel, di
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.BlinkModeSelector != nil {
 		m.BlinkModeSelector = types.StringValue(*got.BlinkModeSelector)
+	} else if m.BlinkModeSelector.IsUnknown() {
+		m.BlinkModeSelector = types.StringNull()
 	}
 	if got.PhaseSelector != nil {
 		m.PhaseSelector = types.StringValue(*got.PhaseSelector)
+	} else if m.PhaseSelector.IsUnknown() {
+		m.PhaseSelector = types.StringNull()
 	}
 	if got.MonitorPhaseSequence != nil {
 		m.MonitorPhaseSequence = types.BoolValue(*got.MonitorPhaseSequence)
+	} else if m.MonitorPhaseSequence.IsUnknown() {
+		m.MonitorPhaseSequence = types.BoolNull()
 	}
 	if got.Reverse != nil {
-		if m.Reverse == nil {
-			m.Reverse = &emConfigReverseModel{}
+		var sReverse emConfigReverseModel
+		if !m.Reverse.IsNull() && !m.Reverse.IsUnknown() {
+			diags.Append(m.Reverse.As(ctx, &sReverse, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Reverse.A != nil {
-			m.Reverse.A = types.BoolValue(*got.Reverse.A)
+			sReverse.A = types.BoolValue(*got.Reverse.A)
+		} else if sReverse.A.IsUnknown() {
+			sReverse.A = types.BoolNull()
 		}
 		if got.Reverse.B != nil {
-			m.Reverse.B = types.BoolValue(*got.Reverse.B)
+			sReverse.B = types.BoolValue(*got.Reverse.B)
+		} else if sReverse.B.IsUnknown() {
+			sReverse.B = types.BoolNull()
 		}
 		if got.Reverse.C != nil {
-			m.Reverse.C = types.BoolValue(*got.Reverse.C)
+			sReverse.C = types.BoolValue(*got.Reverse.C)
+		} else if sReverse.C.IsUnknown() {
+			sReverse.C = types.BoolNull()
 		}
+		oReverse, dReverse := types.ObjectValueFrom(ctx, emConfigReverseAttrTypes, sReverse)
+		diags.Append(dReverse...)
+		m.Reverse = oReverse
+	} else {
+		m.Reverse = types.ObjectNull(emConfigReverseAttrTypes)
 	}
 	if got.Alarms != nil {
-		if m.Alarms == nil {
-			m.Alarms = &emConfigAlarmsModel{}
+		var sAlarms emConfigAlarmsModel
+		if !m.Alarms.IsNull() && !m.Alarms.IsUnknown() {
+			diags.Append(m.Alarms.As(ctx, &sAlarms, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Alarms.A != nil {
-			if m.Alarms.A == nil {
-				m.Alarms.A = &emConfigAlarmsAModel{}
+			var sAlarmsA emConfigAlarmsAModel
+			if !sAlarms.A.IsNull() && !sAlarms.A.IsUnknown() {
+				diags.Append(sAlarms.A.As(ctx, &sAlarmsA, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Alarms.A.Voltage != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.A.Voltage)
 				diags.Append(d...)
-				m.Alarms.A.Voltage = l
+				sAlarmsA.Voltage = l
+			} else if sAlarmsA.Voltage.IsUnknown() {
+				sAlarmsA.Voltage = types.ListNull(types.Float64Type)
 			}
 			if got.Alarms.A.Current != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.A.Current)
 				diags.Append(d...)
-				m.Alarms.A.Current = l
+				sAlarmsA.Current = l
+			} else if sAlarmsA.Current.IsUnknown() {
+				sAlarmsA.Current = types.ListNull(types.Float64Type)
 			}
 			if got.Alarms.A.Power != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.A.Power)
 				diags.Append(d...)
-				m.Alarms.A.Power = l
+				sAlarmsA.Power = l
+			} else if sAlarmsA.Power.IsUnknown() {
+				sAlarmsA.Power = types.ListNull(types.Float64Type)
 			}
+			oAlarmsA, dAlarmsA := types.ObjectValueFrom(ctx, emConfigAlarmsAAttrTypes, sAlarmsA)
+			diags.Append(dAlarmsA...)
+			sAlarms.A = oAlarmsA
+		} else {
+			sAlarms.A = types.ObjectNull(emConfigAlarmsAAttrTypes)
 		}
 		if got.Alarms.B != nil {
-			if m.Alarms.B == nil {
-				m.Alarms.B = &emConfigAlarmsBModel{}
+			var sAlarmsB emConfigAlarmsBModel
+			if !sAlarms.B.IsNull() && !sAlarms.B.IsUnknown() {
+				diags.Append(sAlarms.B.As(ctx, &sAlarmsB, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Alarms.B.Voltage != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.B.Voltage)
 				diags.Append(d...)
-				m.Alarms.B.Voltage = l
+				sAlarmsB.Voltage = l
+			} else if sAlarmsB.Voltage.IsUnknown() {
+				sAlarmsB.Voltage = types.ListNull(types.Float64Type)
 			}
 			if got.Alarms.B.Current != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.B.Current)
 				diags.Append(d...)
-				m.Alarms.B.Current = l
+				sAlarmsB.Current = l
+			} else if sAlarmsB.Current.IsUnknown() {
+				sAlarmsB.Current = types.ListNull(types.Float64Type)
 			}
 			if got.Alarms.B.Power != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.B.Power)
 				diags.Append(d...)
-				m.Alarms.B.Power = l
+				sAlarmsB.Power = l
+			} else if sAlarmsB.Power.IsUnknown() {
+				sAlarmsB.Power = types.ListNull(types.Float64Type)
 			}
+			oAlarmsB, dAlarmsB := types.ObjectValueFrom(ctx, emConfigAlarmsBAttrTypes, sAlarmsB)
+			diags.Append(dAlarmsB...)
+			sAlarms.B = oAlarmsB
+		} else {
+			sAlarms.B = types.ObjectNull(emConfigAlarmsBAttrTypes)
 		}
 		if got.Alarms.C != nil {
-			if m.Alarms.C == nil {
-				m.Alarms.C = &emConfigAlarmsCModel{}
+			var sAlarmsC emConfigAlarmsCModel
+			if !sAlarms.C.IsNull() && !sAlarms.C.IsUnknown() {
+				diags.Append(sAlarms.C.As(ctx, &sAlarmsC, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Alarms.C.Voltage != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.C.Voltage)
 				diags.Append(d...)
-				m.Alarms.C.Voltage = l
+				sAlarmsC.Voltage = l
+			} else if sAlarmsC.Voltage.IsUnknown() {
+				sAlarmsC.Voltage = types.ListNull(types.Float64Type)
 			}
 			if got.Alarms.C.Current != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.C.Current)
 				diags.Append(d...)
-				m.Alarms.C.Current = l
+				sAlarmsC.Current = l
+			} else if sAlarmsC.Current.IsUnknown() {
+				sAlarmsC.Current = types.ListNull(types.Float64Type)
 			}
 			if got.Alarms.C.Power != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.C.Power)
 				diags.Append(d...)
-				m.Alarms.C.Power = l
+				sAlarmsC.Power = l
+			} else if sAlarmsC.Power.IsUnknown() {
+				sAlarmsC.Power = types.ListNull(types.Float64Type)
 			}
+			oAlarmsC, dAlarmsC := types.ObjectValueFrom(ctx, emConfigAlarmsCAttrTypes, sAlarmsC)
+			diags.Append(dAlarmsC...)
+			sAlarms.C = oAlarmsC
+		} else {
+			sAlarms.C = types.ObjectNull(emConfigAlarmsCAttrTypes)
 		}
+		oAlarms, dAlarms := types.ObjectValueFrom(ctx, emConfigAlarmsAttrTypes, sAlarms)
+		diags.Append(dAlarms...)
+		m.Alarms = oAlarms
+	} else {
+		m.Alarms = types.ObjectNull(emConfigAlarmsAttrTypes)
 	}
 	if got.CtType != nil {
 		m.CtType = types.StringValue(*got.CtType)
+	} else if m.CtType.IsUnknown() {
+		m.CtType = types.StringNull()
 	}
 }
 
@@ -372,74 +468,84 @@ func (r *emConfigResource) apply(ctx context.Context, plan emConfigResourceModel
 		v := plan.MonitorPhaseSequence.ValueBool()
 		cfg.MonitorPhaseSequence = &v
 	}
-	if plan.Reverse != nil {
+	if !plan.Reverse.IsNull() && !plan.Reverse.IsUnknown() {
+		var wReverse emConfigReverseModel
+		diags.Append(plan.Reverse.As(ctx, &wReverse, basetypes.ObjectAsOptions{})...)
 		cfg.Reverse = &components.EMConfigReverse{}
-		if !plan.Reverse.A.IsNull() && !plan.Reverse.A.IsUnknown() {
-			v := plan.Reverse.A.ValueBool()
+		if !wReverse.A.IsNull() && !wReverse.A.IsUnknown() {
+			v := wReverse.A.ValueBool()
 			cfg.Reverse.A = &v
 		}
-		if !plan.Reverse.B.IsNull() && !plan.Reverse.B.IsUnknown() {
-			v := plan.Reverse.B.ValueBool()
+		if !wReverse.B.IsNull() && !wReverse.B.IsUnknown() {
+			v := wReverse.B.ValueBool()
 			cfg.Reverse.B = &v
 		}
-		if !plan.Reverse.C.IsNull() && !plan.Reverse.C.IsUnknown() {
-			v := plan.Reverse.C.ValueBool()
+		if !wReverse.C.IsNull() && !wReverse.C.IsUnknown() {
+			v := wReverse.C.ValueBool()
 			cfg.Reverse.C = &v
 		}
 	}
-	if plan.Alarms != nil {
+	if !plan.Alarms.IsNull() && !plan.Alarms.IsUnknown() {
+		var wAlarms emConfigAlarmsModel
+		diags.Append(plan.Alarms.As(ctx, &wAlarms, basetypes.ObjectAsOptions{})...)
 		cfg.Alarms = &components.EMConfigAlarms{}
-		if plan.Alarms.A != nil {
+		if !wAlarms.A.IsNull() && !wAlarms.A.IsUnknown() {
+			var wAlarmsA emConfigAlarmsAModel
+			diags.Append(wAlarms.A.As(ctx, &wAlarmsA, basetypes.ObjectAsOptions{})...)
 			cfg.Alarms.A = &components.EMConfigAlarmsA{}
-			if !plan.Alarms.A.Voltage.IsNull() && !plan.Alarms.A.Voltage.IsUnknown() {
+			if !wAlarmsA.Voltage.IsNull() && !wAlarmsA.Voltage.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.A.Voltage.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsA.Voltage.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.A.Voltage = v
 			}
-			if !plan.Alarms.A.Current.IsNull() && !plan.Alarms.A.Current.IsUnknown() {
+			if !wAlarmsA.Current.IsNull() && !wAlarmsA.Current.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.A.Current.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsA.Current.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.A.Current = v
 			}
-			if !plan.Alarms.A.Power.IsNull() && !plan.Alarms.A.Power.IsUnknown() {
+			if !wAlarmsA.Power.IsNull() && !wAlarmsA.Power.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.A.Power.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsA.Power.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.A.Power = v
 			}
 		}
-		if plan.Alarms.B != nil {
+		if !wAlarms.B.IsNull() && !wAlarms.B.IsUnknown() {
+			var wAlarmsB emConfigAlarmsBModel
+			diags.Append(wAlarms.B.As(ctx, &wAlarmsB, basetypes.ObjectAsOptions{})...)
 			cfg.Alarms.B = &components.EMConfigAlarmsB{}
-			if !plan.Alarms.B.Voltage.IsNull() && !plan.Alarms.B.Voltage.IsUnknown() {
+			if !wAlarmsB.Voltage.IsNull() && !wAlarmsB.Voltage.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.B.Voltage.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsB.Voltage.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.B.Voltage = v
 			}
-			if !plan.Alarms.B.Current.IsNull() && !plan.Alarms.B.Current.IsUnknown() {
+			if !wAlarmsB.Current.IsNull() && !wAlarmsB.Current.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.B.Current.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsB.Current.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.B.Current = v
 			}
-			if !plan.Alarms.B.Power.IsNull() && !plan.Alarms.B.Power.IsUnknown() {
+			if !wAlarmsB.Power.IsNull() && !wAlarmsB.Power.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.B.Power.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsB.Power.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.B.Power = v
 			}
 		}
-		if plan.Alarms.C != nil {
+		if !wAlarms.C.IsNull() && !wAlarms.C.IsUnknown() {
+			var wAlarmsC emConfigAlarmsCModel
+			diags.Append(wAlarms.C.As(ctx, &wAlarmsC, basetypes.ObjectAsOptions{})...)
 			cfg.Alarms.C = &components.EMConfigAlarmsC{}
-			if !plan.Alarms.C.Voltage.IsNull() && !plan.Alarms.C.Voltage.IsUnknown() {
+			if !wAlarmsC.Voltage.IsNull() && !wAlarmsC.Voltage.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.C.Voltage.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsC.Voltage.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.C.Voltage = v
 			}
-			if !plan.Alarms.C.Current.IsNull() && !plan.Alarms.C.Current.IsUnknown() {
+			if !wAlarmsC.Current.IsNull() && !wAlarmsC.Current.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.C.Current.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsC.Current.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.C.Current = v
 			}
-			if !plan.Alarms.C.Power.IsNull() && !plan.Alarms.C.Power.IsUnknown() {
+			if !wAlarmsC.Power.IsNull() && !wAlarmsC.Power.IsUnknown() {
 				var v []float64
-				diags.Append(plan.Alarms.C.Power.ElementsAs(ctx, &v, false)...)
+				diags.Append(wAlarmsC.Power.ElementsAs(ctx, &v, false)...)
 				cfg.Alarms.C.Power = v
 			}
 		}

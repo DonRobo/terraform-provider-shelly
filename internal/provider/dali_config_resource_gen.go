@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 )
 
@@ -32,10 +34,15 @@ type daliConfigScanModel struct {
 }
 
 type daliConfigResourceModel struct {
-	IP      types.String         `tfsdk:"ip"`
-	CgCount types.Float64        `tfsdk:"cg_count"`
-	Scan    *daliConfigScanModel `tfsdk:"scan"`
-	Errors  types.List           `tfsdk:"errors"`
+	IP      types.String  `tfsdk:"ip"`
+	CgCount types.Float64 `tfsdk:"cg_count"`
+	Scan    types.Object  `tfsdk:"scan"`
+	Errors  types.List    `tfsdk:"errors"`
+}
+
+var daliConfigScanAttrTypes = map[string]attr.Type{
+	"cg_count":   types.Float64Type,
+	"started_at": types.Float64Type,
 }
 
 func (r *daliConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -93,22 +100,36 @@ func (r *daliConfigResource) get(ctx context.Context, m *daliConfigResourceModel
 	}
 	if got.CgCount != nil {
 		m.CgCount = types.Float64Value(*got.CgCount)
+	} else if m.CgCount.IsUnknown() {
+		m.CgCount = types.Float64Null()
 	}
 	if got.Scan != nil {
-		if m.Scan == nil {
-			m.Scan = &daliConfigScanModel{}
+		var sScan daliConfigScanModel
+		if !m.Scan.IsNull() && !m.Scan.IsUnknown() {
+			diags.Append(m.Scan.As(ctx, &sScan, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Scan.CgCount != nil {
-			m.Scan.CgCount = types.Float64Value(*got.Scan.CgCount)
+			sScan.CgCount = types.Float64Value(*got.Scan.CgCount)
+		} else if sScan.CgCount.IsUnknown() {
+			sScan.CgCount = types.Float64Null()
 		}
 		if got.Scan.StartedAt != nil {
-			m.Scan.StartedAt = types.Float64Value(*got.Scan.StartedAt)
+			sScan.StartedAt = types.Float64Value(*got.Scan.StartedAt)
+		} else if sScan.StartedAt.IsUnknown() {
+			sScan.StartedAt = types.Float64Null()
 		}
+		oScan, dScan := types.ObjectValueFrom(ctx, daliConfigScanAttrTypes, sScan)
+		diags.Append(dScan...)
+		m.Scan = oScan
+	} else {
+		m.Scan = types.ObjectNull(daliConfigScanAttrTypes)
 	}
 	if got.Errors != nil {
 		l, d := types.ListValueFrom(ctx, types.StringType, got.Errors)
 		diags.Append(d...)
 		m.Errors = l
+	} else if m.Errors.IsUnknown() {
+		m.Errors = types.ListNull(types.StringType)
 	}
 }
 
@@ -131,14 +152,16 @@ func (r *daliConfigResource) apply(ctx context.Context, plan daliConfigResourceM
 		v := plan.CgCount.ValueFloat64()
 		cfg.CgCount = &v
 	}
-	if plan.Scan != nil {
+	if !plan.Scan.IsNull() && !plan.Scan.IsUnknown() {
+		var wScan daliConfigScanModel
+		diags.Append(plan.Scan.As(ctx, &wScan, basetypes.ObjectAsOptions{})...)
 		cfg.Scan = &components.DALIConfigScan{}
-		if !plan.Scan.CgCount.IsNull() && !plan.Scan.CgCount.IsUnknown() {
-			v := plan.Scan.CgCount.ValueFloat64()
+		if !wScan.CgCount.IsNull() && !wScan.CgCount.IsUnknown() {
+			v := wScan.CgCount.ValueFloat64()
 			cfg.Scan.CgCount = &v
 		}
-		if !plan.Scan.StartedAt.IsNull() && !plan.Scan.StartedAt.IsUnknown() {
-			v := plan.Scan.StartedAt.ValueFloat64()
+		if !wScan.StartedAt.IsNull() && !wScan.StartedAt.IsUnknown() {
+			v := wScan.StartedAt.ValueFloat64()
 			cfg.Scan.StartedAt = &v
 		}
 	}

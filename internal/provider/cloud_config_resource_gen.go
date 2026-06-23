@@ -66,9 +66,13 @@ func (r *cloudConfigResource) get(ctx context.Context, m *cloudConfigResourceMod
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 	if got.Server != nil {
 		m.Server = types.StringValue(*got.Server)
+	} else if m.Server.IsUnknown() {
+		m.Server = types.StringNull()
 	}
 }
 

@@ -82,12 +82,18 @@ func (r *humidityConfigResource) get(ctx context.Context, m *humidityConfigResou
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.ReportThr != nil {
 		m.ReportThr = types.Float64Value(*got.ReportThr)
+	} else if m.ReportThr.IsUnknown() {
+		m.ReportThr = types.Float64Null()
 	}
 	if got.Offset != nil {
 		m.Offset = types.Float64Value(*got.Offset)
+	} else if m.Offset.IsUnknown() {
+		m.Offset = types.Float64Null()
 	}
 }
 

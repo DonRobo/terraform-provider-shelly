@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -16,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -42,11 +44,22 @@ type serialConfigMbServerModel struct {
 }
 
 type serialConfigResourceModel struct {
-	IP       types.String               `tfsdk:"ip"`
-	ID       types.Int64                `tfsdk:"id"`
-	Mode     types.String               `tfsdk:"mode"`
-	Serial   *serialConfigSerialModel   `tfsdk:"serial"`
-	MbServer *serialConfigMbServerModel `tfsdk:"mb_server"`
+	IP       types.String `tfsdk:"ip"`
+	ID       types.Int64  `tfsdk:"id"`
+	Mode     types.String `tfsdk:"mode"`
+	Serial   types.Object `tfsdk:"serial"`
+	MbServer types.Object `tfsdk:"mb_server"`
+}
+
+var serialConfigSerialAttrTypes = map[string]attr.Type{
+	"baud":   types.Int64Type,
+	"format": types.StringType,
+	"hd":     types.BoolType,
+	"de_al":  types.BoolType,
+}
+
+var serialConfigMbServerAttrTypes = map[string]attr.Type{
+	"addr": types.Int64Type,
 }
 
 func (r *serialConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -123,31 +136,55 @@ func (r *serialConfigResource) get(ctx context.Context, m *serialConfigResourceM
 	}
 	if got.Mode != nil {
 		m.Mode = types.StringValue(*got.Mode)
+	} else if m.Mode.IsUnknown() {
+		m.Mode = types.StringNull()
 	}
 	if got.Serial != nil {
-		if m.Serial == nil {
-			m.Serial = &serialConfigSerialModel{}
+		var sSerial serialConfigSerialModel
+		if !m.Serial.IsNull() && !m.Serial.IsUnknown() {
+			diags.Append(m.Serial.As(ctx, &sSerial, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Serial.Baud != nil {
-			m.Serial.Baud = types.Int64Value(int64(*got.Serial.Baud))
+			sSerial.Baud = types.Int64Value(int64(*got.Serial.Baud))
+		} else if sSerial.Baud.IsUnknown() {
+			sSerial.Baud = types.Int64Null()
 		}
 		if got.Serial.Format != nil {
-			m.Serial.Format = types.StringValue(*got.Serial.Format)
+			sSerial.Format = types.StringValue(*got.Serial.Format)
+		} else if sSerial.Format.IsUnknown() {
+			sSerial.Format = types.StringNull()
 		}
 		if got.Serial.Hd != nil {
-			m.Serial.Hd = types.BoolValue(*got.Serial.Hd)
+			sSerial.Hd = types.BoolValue(*got.Serial.Hd)
+		} else if sSerial.Hd.IsUnknown() {
+			sSerial.Hd = types.BoolNull()
 		}
 		if got.Serial.DeAl != nil {
-			m.Serial.DeAl = types.BoolValue(*got.Serial.DeAl)
+			sSerial.DeAl = types.BoolValue(*got.Serial.DeAl)
+		} else if sSerial.DeAl.IsUnknown() {
+			sSerial.DeAl = types.BoolNull()
 		}
+		oSerial, dSerial := types.ObjectValueFrom(ctx, serialConfigSerialAttrTypes, sSerial)
+		diags.Append(dSerial...)
+		m.Serial = oSerial
+	} else {
+		m.Serial = types.ObjectNull(serialConfigSerialAttrTypes)
 	}
 	if got.MbServer != nil {
-		if m.MbServer == nil {
-			m.MbServer = &serialConfigMbServerModel{}
+		var sMbServer serialConfigMbServerModel
+		if !m.MbServer.IsNull() && !m.MbServer.IsUnknown() {
+			diags.Append(m.MbServer.As(ctx, &sMbServer, basetypes.ObjectAsOptions{})...)
 		}
 		if got.MbServer.Addr != nil {
-			m.MbServer.Addr = types.Int64Value(int64(*got.MbServer.Addr))
+			sMbServer.Addr = types.Int64Value(int64(*got.MbServer.Addr))
+		} else if sMbServer.Addr.IsUnknown() {
+			sMbServer.Addr = types.Int64Null()
 		}
+		oMbServer, dMbServer := types.ObjectValueFrom(ctx, serialConfigMbServerAttrTypes, sMbServer)
+		diags.Append(dMbServer...)
+		m.MbServer = oMbServer
+	} else {
+		m.MbServer = types.ObjectNull(serialConfigMbServerAttrTypes)
 	}
 }
 
@@ -171,29 +208,33 @@ func (r *serialConfigResource) apply(ctx context.Context, plan serialConfigResou
 		v := plan.Mode.ValueString()
 		cfg.Mode = &v
 	}
-	if plan.Serial != nil {
+	if !plan.Serial.IsNull() && !plan.Serial.IsUnknown() {
+		var wSerial serialConfigSerialModel
+		diags.Append(plan.Serial.As(ctx, &wSerial, basetypes.ObjectAsOptions{})...)
 		cfg.Serial = &components.SerialConfigSerial{}
-		if !plan.Serial.Baud.IsNull() && !plan.Serial.Baud.IsUnknown() {
-			v := int(plan.Serial.Baud.ValueInt64())
+		if !wSerial.Baud.IsNull() && !wSerial.Baud.IsUnknown() {
+			v := int(wSerial.Baud.ValueInt64())
 			cfg.Serial.Baud = &v
 		}
-		if !plan.Serial.Format.IsNull() && !plan.Serial.Format.IsUnknown() {
-			v := plan.Serial.Format.ValueString()
+		if !wSerial.Format.IsNull() && !wSerial.Format.IsUnknown() {
+			v := wSerial.Format.ValueString()
 			cfg.Serial.Format = &v
 		}
-		if !plan.Serial.Hd.IsNull() && !plan.Serial.Hd.IsUnknown() {
-			v := plan.Serial.Hd.ValueBool()
+		if !wSerial.Hd.IsNull() && !wSerial.Hd.IsUnknown() {
+			v := wSerial.Hd.ValueBool()
 			cfg.Serial.Hd = &v
 		}
-		if !plan.Serial.DeAl.IsNull() && !plan.Serial.DeAl.IsUnknown() {
-			v := plan.Serial.DeAl.ValueBool()
+		if !wSerial.DeAl.IsNull() && !wSerial.DeAl.IsUnknown() {
+			v := wSerial.DeAl.ValueBool()
 			cfg.Serial.DeAl = &v
 		}
 	}
-	if plan.MbServer != nil {
+	if !plan.MbServer.IsNull() && !plan.MbServer.IsUnknown() {
+		var wMbServer serialConfigMbServerModel
+		diags.Append(plan.MbServer.As(ctx, &wMbServer, basetypes.ObjectAsOptions{})...)
 		cfg.MbServer = &components.SerialConfigMbServer{}
-		if !plan.MbServer.Addr.IsNull() && !plan.MbServer.Addr.IsUnknown() {
-			v := int(plan.MbServer.Addr.ValueInt64())
+		if !wMbServer.Addr.IsNull() && !wMbServer.Addr.IsUnknown() {
+			v := int(wMbServer.Addr.ValueInt64())
 			cfg.MbServer.Addr = &v
 		}
 	}

@@ -79,15 +79,23 @@ func (r *pillConfigResource) get(ctx context.Context, m *pillConfigResourceModel
 	}
 	if got.Mode != nil {
 		m.Mode = types.StringValue(*got.Mode)
+	} else if m.Mode.IsUnknown() {
+		m.Mode = types.StringNull()
 	}
 	if got.Pin0Mode != nil {
 		m.Pin0Mode = types.StringValue(*got.Pin0Mode)
+	} else if m.Pin0Mode.IsUnknown() {
+		m.Pin0Mode = types.StringNull()
 	}
 	if got.Pin1Mode != nil {
 		m.Pin1Mode = types.StringValue(*got.Pin1Mode)
+	} else if m.Pin1Mode.IsUnknown() {
+		m.Pin1Mode = types.StringNull()
 	}
 	if got.Pin2Mode != nil {
 		m.Pin2Mode = types.StringValue(*got.Pin2Mode)
+	} else if m.Pin2Mode.IsUnknown() {
+		m.Pin2Mode = types.StringNull()
 	}
 }
 

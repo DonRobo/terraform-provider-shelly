@@ -111,27 +111,43 @@ func (r *ethConfigResource) get(ctx context.Context, m *ethConfigResourceModel, 
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 	if got.ServerMode != nil {
 		m.ServerMode = types.BoolValue(*got.ServerMode)
+	} else if m.ServerMode.IsUnknown() {
+		m.ServerMode = types.BoolNull()
 	}
 	if got.Ipv4mode != nil {
 		m.Ipv4mode = types.StringValue(*got.Ipv4mode)
+	} else if m.Ipv4mode.IsUnknown() {
+		m.Ipv4mode = types.StringNull()
 	}
 	if got.Netmask != nil {
 		m.Netmask = types.StringValue(*got.Netmask)
+	} else if m.Netmask.IsUnknown() {
+		m.Netmask = types.StringNull()
 	}
 	if got.Gw != nil {
 		m.Gw = types.StringValue(*got.Gw)
+	} else if m.Gw.IsUnknown() {
+		m.Gw = types.StringNull()
 	}
 	if got.Nameserver != nil {
 		m.Nameserver = types.StringValue(*got.Nameserver)
+	} else if m.Nameserver.IsUnknown() {
+		m.Nameserver = types.StringNull()
 	}
 	if got.DhcpStart != nil {
 		m.DhcpStart = types.StringValue(*got.DhcpStart)
+	} else if m.DhcpStart.IsUnknown() {
+		m.DhcpStart = types.StringNull()
 	}
 	if got.DhcpEnd != nil {
 		m.DhcpEnd = types.StringValue(*got.DhcpEnd)
+	} else if m.DhcpEnd.IsUnknown() {
+		m.DhcpEnd = types.StringNull()
 	}
 }
 

@@ -58,6 +58,8 @@ func (r *uiConfigResource) get(ctx context.Context, m *uiConfigResourceModel, di
 	}
 	if got.IdleBrightness != nil {
 		m.IdleBrightness = types.Int64Value(int64(*got.IdleBrightness))
+	} else if m.IdleBrightness.IsUnknown() {
+		m.IdleBrightness = types.Int64Null()
 	}
 }
 

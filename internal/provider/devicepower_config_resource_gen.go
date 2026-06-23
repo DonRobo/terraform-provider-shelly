@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -34,10 +36,14 @@ type devicepowerConfigBatteryModel struct {
 }
 
 type devicepowerConfigResourceModel struct {
-	IP      types.String                   `tfsdk:"ip"`
-	ID      types.Int64                    `tfsdk:"id"`
-	Battery *devicepowerConfigBatteryModel `tfsdk:"battery"`
-	Errors  types.List                     `tfsdk:"errors"`
+	IP      types.String `tfsdk:"ip"`
+	ID      types.Int64  `tfsdk:"id"`
+	Battery types.Object `tfsdk:"battery"`
+	Errors  types.List   `tfsdk:"errors"`
+}
+
+var devicepowerConfigBatteryAttrTypes = map[string]attr.Type{
+	"percent": types.Float64Type,
 }
 
 func (r *devicepowerConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -83,17 +89,27 @@ func (r *devicepowerConfigResource) get(ctx context.Context, m *devicepowerConfi
 		return
 	}
 	if got.Battery != nil {
-		if m.Battery == nil {
-			m.Battery = &devicepowerConfigBatteryModel{}
+		var sBattery devicepowerConfigBatteryModel
+		if !m.Battery.IsNull() && !m.Battery.IsUnknown() {
+			diags.Append(m.Battery.As(ctx, &sBattery, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Battery.Percent != nil {
-			m.Battery.Percent = types.Float64Value(*got.Battery.Percent)
+			sBattery.Percent = types.Float64Value(*got.Battery.Percent)
+		} else if sBattery.Percent.IsUnknown() {
+			sBattery.Percent = types.Float64Null()
 		}
+		oBattery, dBattery := types.ObjectValueFrom(ctx, devicepowerConfigBatteryAttrTypes, sBattery)
+		diags.Append(dBattery...)
+		m.Battery = oBattery
+	} else {
+		m.Battery = types.ObjectNull(devicepowerConfigBatteryAttrTypes)
 	}
 	if got.Errors != nil {
 		l, d := types.ListValueFrom(ctx, types.StringType, got.Errors)
 		diags.Append(d...)
 		m.Errors = l
+	} else if m.Errors.IsUnknown() {
+		m.Errors = types.ListNull(types.StringType)
 	}
 }
 
@@ -113,10 +129,12 @@ func (r *devicepowerConfigResource) Read(ctx context.Context, req resource.ReadR
 func (r *devicepowerConfigResource) apply(ctx context.Context, plan devicepowerConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.DevicePowerConfig
 	cfg.ID = int(plan.ID.ValueInt64())
-	if plan.Battery != nil {
+	if !plan.Battery.IsNull() && !plan.Battery.IsUnknown() {
+		var wBattery devicepowerConfigBatteryModel
+		diags.Append(plan.Battery.As(ctx, &wBattery, basetypes.ObjectAsOptions{})...)
 		cfg.Battery = &components.DevicePowerConfigBattery{}
-		if !plan.Battery.Percent.IsNull() && !plan.Battery.Percent.IsUnknown() {
-			v := plan.Battery.Percent.ValueFloat64()
+		if !wBattery.Percent.IsNull() && !wBattery.Percent.IsUnknown() {
+			v := wBattery.Percent.ValueFloat64()
 			cfg.Battery.Percent = &v
 		}
 	}

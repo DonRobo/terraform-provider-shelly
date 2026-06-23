@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 )
 
@@ -65,10 +67,10 @@ type sysConfigDebugFileLogModel struct {
 }
 
 type sysConfigDebugModel struct {
-	MQTT      *sysConfigDebugMQTTModel      `tfsdk:"mqtt"`
-	Websocket *sysConfigDebugWebsocketModel `tfsdk:"websocket"`
-	Udp       *sysConfigDebugUdpModel       `tfsdk:"udp"`
-	FileLog   *sysConfigDebugFileLogModel   `tfsdk:"file_log"`
+	MQTT      types.Object `tfsdk:"mqtt"`
+	Websocket types.Object `tfsdk:"websocket"`
+	Udp       types.Object `tfsdk:"udp"`
+	FileLog   types.Object `tfsdk:"file_log"`
 }
 
 type sysConfigRPCUdpModel struct {
@@ -81,13 +83,64 @@ type sysConfigSntpModel struct {
 }
 
 type sysConfigResourceModel struct {
-	IP       types.String            `tfsdk:"ip"`
-	Device   *sysConfigDeviceModel   `tfsdk:"device"`
-	Location *sysConfigLocationModel `tfsdk:"location"`
-	Debug    *sysConfigDebugModel    `tfsdk:"debug"`
-	RPCUdp   *sysConfigRPCUdpModel   `tfsdk:"rpc_udp"`
-	Sntp     *sysConfigSntpModel     `tfsdk:"sntp"`
-	CfgRev   types.Float64           `tfsdk:"cfg_rev"`
+	IP       types.String  `tfsdk:"ip"`
+	Device   types.Object  `tfsdk:"device"`
+	Location types.Object  `tfsdk:"location"`
+	Debug    types.Object  `tfsdk:"debug"`
+	RPCUdp   types.Object  `tfsdk:"rpc_udp"`
+	Sntp     types.Object  `tfsdk:"sntp"`
+	CfgRev   types.Float64 `tfsdk:"cfg_rev"`
+}
+
+var sysConfigDeviceAttrTypes = map[string]attr.Type{
+	"name":                         types.StringType,
+	"eco_mode":                     types.BoolType,
+	"mac":                          types.StringType,
+	"fw_id":                        types.StringType,
+	"profile":                      types.StringType,
+	"discoverable":                 types.BoolType,
+	"addon_type":                   types.StringType,
+	"sys_btn_toggle":               types.BoolType,
+	"tls_check_cert_validity_time": types.BoolType,
+	"enhanced_security":            types.BoolType,
+}
+
+var sysConfigLocationAttrTypes = map[string]attr.Type{
+	"tz":  types.StringType,
+	"lat": types.Float64Type,
+	"lon": types.Float64Type,
+}
+
+var sysConfigDebugMQTTAttrTypes = map[string]attr.Type{
+	"enable": types.BoolType,
+}
+
+var sysConfigDebugWebsocketAttrTypes = map[string]attr.Type{
+	"enable": types.BoolType,
+}
+
+var sysConfigDebugUdpAttrTypes = map[string]attr.Type{
+	"addr": types.StringType,
+}
+
+var sysConfigDebugFileLogAttrTypes = map[string]attr.Type{
+	"enable": types.BoolType,
+}
+
+var sysConfigDebugAttrTypes = map[string]attr.Type{
+	"mqtt":      types.ObjectType{AttrTypes: sysConfigDebugMQTTAttrTypes},
+	"websocket": types.ObjectType{AttrTypes: sysConfigDebugWebsocketAttrTypes},
+	"udp":       types.ObjectType{AttrTypes: sysConfigDebugUdpAttrTypes},
+	"file_log":  types.ObjectType{AttrTypes: sysConfigDebugFileLogAttrTypes},
+}
+
+var sysConfigRPCUdpAttrTypes = map[string]attr.Type{
+	"dst_addr":    types.StringType,
+	"listen_port": types.Float64Type,
+}
+
+var sysConfigSntpAttrTypes = map[string]attr.Type{
+	"server": types.StringType,
 }
 
 func (r *sysConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -300,112 +353,208 @@ func (r *sysConfigResource) get(ctx context.Context, m *sysConfigResourceModel, 
 		return
 	}
 	if got.Device != nil {
-		if m.Device == nil {
-			m.Device = &sysConfigDeviceModel{}
+		var sDevice sysConfigDeviceModel
+		if !m.Device.IsNull() && !m.Device.IsUnknown() {
+			diags.Append(m.Device.As(ctx, &sDevice, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Device.Name != nil {
-			m.Device.Name = types.StringValue(*got.Device.Name)
+			sDevice.Name = types.StringValue(*got.Device.Name)
+		} else if sDevice.Name.IsUnknown() {
+			sDevice.Name = types.StringNull()
 		}
 		if got.Device.EcoMode != nil {
-			m.Device.EcoMode = types.BoolValue(*got.Device.EcoMode)
+			sDevice.EcoMode = types.BoolValue(*got.Device.EcoMode)
+		} else if sDevice.EcoMode.IsUnknown() {
+			sDevice.EcoMode = types.BoolNull()
 		}
 		if got.Device.MAC != nil {
-			m.Device.MAC = types.StringValue(*got.Device.MAC)
+			sDevice.MAC = types.StringValue(*got.Device.MAC)
+		} else if sDevice.MAC.IsUnknown() {
+			sDevice.MAC = types.StringNull()
 		}
 		if got.Device.FWID != nil {
-			m.Device.FWID = types.StringValue(*got.Device.FWID)
+			sDevice.FWID = types.StringValue(*got.Device.FWID)
+		} else if sDevice.FWID.IsUnknown() {
+			sDevice.FWID = types.StringNull()
 		}
 		if got.Device.Profile != nil {
-			m.Device.Profile = types.StringValue(*got.Device.Profile)
+			sDevice.Profile = types.StringValue(*got.Device.Profile)
+		} else if sDevice.Profile.IsUnknown() {
+			sDevice.Profile = types.StringNull()
 		}
 		if got.Device.Discoverable != nil {
-			m.Device.Discoverable = types.BoolValue(*got.Device.Discoverable)
+			sDevice.Discoverable = types.BoolValue(*got.Device.Discoverable)
+		} else if sDevice.Discoverable.IsUnknown() {
+			sDevice.Discoverable = types.BoolNull()
 		}
 		if got.Device.AddonType != nil {
-			m.Device.AddonType = types.StringValue(*got.Device.AddonType)
+			sDevice.AddonType = types.StringValue(*got.Device.AddonType)
+		} else if sDevice.AddonType.IsUnknown() {
+			sDevice.AddonType = types.StringNull()
 		}
 		if got.Device.SysBtnToggle != nil {
-			m.Device.SysBtnToggle = types.BoolValue(*got.Device.SysBtnToggle)
+			sDevice.SysBtnToggle = types.BoolValue(*got.Device.SysBtnToggle)
+		} else if sDevice.SysBtnToggle.IsUnknown() {
+			sDevice.SysBtnToggle = types.BoolNull()
 		}
 		if got.Device.TLSCheckCertValidityTime != nil {
-			m.Device.TLSCheckCertValidityTime = types.BoolValue(*got.Device.TLSCheckCertValidityTime)
+			sDevice.TLSCheckCertValidityTime = types.BoolValue(*got.Device.TLSCheckCertValidityTime)
+		} else if sDevice.TLSCheckCertValidityTime.IsUnknown() {
+			sDevice.TLSCheckCertValidityTime = types.BoolNull()
 		}
 		if got.Device.EnhancedSecurity != nil {
-			m.Device.EnhancedSecurity = types.BoolValue(*got.Device.EnhancedSecurity)
+			sDevice.EnhancedSecurity = types.BoolValue(*got.Device.EnhancedSecurity)
+		} else if sDevice.EnhancedSecurity.IsUnknown() {
+			sDevice.EnhancedSecurity = types.BoolNull()
 		}
+		oDevice, dDevice := types.ObjectValueFrom(ctx, sysConfigDeviceAttrTypes, sDevice)
+		diags.Append(dDevice...)
+		m.Device = oDevice
+	} else {
+		m.Device = types.ObjectNull(sysConfigDeviceAttrTypes)
 	}
 	if got.Location != nil {
-		if m.Location == nil {
-			m.Location = &sysConfigLocationModel{}
+		var sLocation sysConfigLocationModel
+		if !m.Location.IsNull() && !m.Location.IsUnknown() {
+			diags.Append(m.Location.As(ctx, &sLocation, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Location.Tz != nil {
-			m.Location.Tz = types.StringValue(*got.Location.Tz)
+			sLocation.Tz = types.StringValue(*got.Location.Tz)
+		} else if sLocation.Tz.IsUnknown() {
+			sLocation.Tz = types.StringNull()
 		}
 		if got.Location.Lat != nil {
-			m.Location.Lat = types.Float64Value(*got.Location.Lat)
+			sLocation.Lat = types.Float64Value(*got.Location.Lat)
+		} else if sLocation.Lat.IsUnknown() {
+			sLocation.Lat = types.Float64Null()
 		}
 		if got.Location.Lon != nil {
-			m.Location.Lon = types.Float64Value(*got.Location.Lon)
+			sLocation.Lon = types.Float64Value(*got.Location.Lon)
+		} else if sLocation.Lon.IsUnknown() {
+			sLocation.Lon = types.Float64Null()
 		}
+		oLocation, dLocation := types.ObjectValueFrom(ctx, sysConfigLocationAttrTypes, sLocation)
+		diags.Append(dLocation...)
+		m.Location = oLocation
+	} else {
+		m.Location = types.ObjectNull(sysConfigLocationAttrTypes)
 	}
 	if got.Debug != nil {
-		if m.Debug == nil {
-			m.Debug = &sysConfigDebugModel{}
+		var sDebug sysConfigDebugModel
+		if !m.Debug.IsNull() && !m.Debug.IsUnknown() {
+			diags.Append(m.Debug.As(ctx, &sDebug, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Debug.MQTT != nil {
-			if m.Debug.MQTT == nil {
-				m.Debug.MQTT = &sysConfigDebugMQTTModel{}
+			var sDebugMQTT sysConfigDebugMQTTModel
+			if !sDebug.MQTT.IsNull() && !sDebug.MQTT.IsUnknown() {
+				diags.Append(sDebug.MQTT.As(ctx, &sDebugMQTT, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Debug.MQTT.Enable != nil {
-				m.Debug.MQTT.Enable = types.BoolValue(*got.Debug.MQTT.Enable)
+				sDebugMQTT.Enable = types.BoolValue(*got.Debug.MQTT.Enable)
+			} else if sDebugMQTT.Enable.IsUnknown() {
+				sDebugMQTT.Enable = types.BoolNull()
 			}
+			oDebugMQTT, dDebugMQTT := types.ObjectValueFrom(ctx, sysConfigDebugMQTTAttrTypes, sDebugMQTT)
+			diags.Append(dDebugMQTT...)
+			sDebug.MQTT = oDebugMQTT
+		} else {
+			sDebug.MQTT = types.ObjectNull(sysConfigDebugMQTTAttrTypes)
 		}
 		if got.Debug.Websocket != nil {
-			if m.Debug.Websocket == nil {
-				m.Debug.Websocket = &sysConfigDebugWebsocketModel{}
+			var sDebugWebsocket sysConfigDebugWebsocketModel
+			if !sDebug.Websocket.IsNull() && !sDebug.Websocket.IsUnknown() {
+				diags.Append(sDebug.Websocket.As(ctx, &sDebugWebsocket, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Debug.Websocket.Enable != nil {
-				m.Debug.Websocket.Enable = types.BoolValue(*got.Debug.Websocket.Enable)
+				sDebugWebsocket.Enable = types.BoolValue(*got.Debug.Websocket.Enable)
+			} else if sDebugWebsocket.Enable.IsUnknown() {
+				sDebugWebsocket.Enable = types.BoolNull()
 			}
+			oDebugWebsocket, dDebugWebsocket := types.ObjectValueFrom(ctx, sysConfigDebugWebsocketAttrTypes, sDebugWebsocket)
+			diags.Append(dDebugWebsocket...)
+			sDebug.Websocket = oDebugWebsocket
+		} else {
+			sDebug.Websocket = types.ObjectNull(sysConfigDebugWebsocketAttrTypes)
 		}
 		if got.Debug.Udp != nil {
-			if m.Debug.Udp == nil {
-				m.Debug.Udp = &sysConfigDebugUdpModel{}
+			var sDebugUdp sysConfigDebugUdpModel
+			if !sDebug.Udp.IsNull() && !sDebug.Udp.IsUnknown() {
+				diags.Append(sDebug.Udp.As(ctx, &sDebugUdp, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Debug.Udp.Addr != nil {
-				m.Debug.Udp.Addr = types.StringValue(*got.Debug.Udp.Addr)
+				sDebugUdp.Addr = types.StringValue(*got.Debug.Udp.Addr)
+			} else if sDebugUdp.Addr.IsUnknown() {
+				sDebugUdp.Addr = types.StringNull()
 			}
+			oDebugUdp, dDebugUdp := types.ObjectValueFrom(ctx, sysConfigDebugUdpAttrTypes, sDebugUdp)
+			diags.Append(dDebugUdp...)
+			sDebug.Udp = oDebugUdp
+		} else {
+			sDebug.Udp = types.ObjectNull(sysConfigDebugUdpAttrTypes)
 		}
 		if got.Debug.FileLog != nil {
-			if m.Debug.FileLog == nil {
-				m.Debug.FileLog = &sysConfigDebugFileLogModel{}
+			var sDebugFileLog sysConfigDebugFileLogModel
+			if !sDebug.FileLog.IsNull() && !sDebug.FileLog.IsUnknown() {
+				diags.Append(sDebug.FileLog.As(ctx, &sDebugFileLog, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Debug.FileLog.Enable != nil {
-				m.Debug.FileLog.Enable = types.BoolValue(*got.Debug.FileLog.Enable)
+				sDebugFileLog.Enable = types.BoolValue(*got.Debug.FileLog.Enable)
+			} else if sDebugFileLog.Enable.IsUnknown() {
+				sDebugFileLog.Enable = types.BoolNull()
 			}
+			oDebugFileLog, dDebugFileLog := types.ObjectValueFrom(ctx, sysConfigDebugFileLogAttrTypes, sDebugFileLog)
+			diags.Append(dDebugFileLog...)
+			sDebug.FileLog = oDebugFileLog
+		} else {
+			sDebug.FileLog = types.ObjectNull(sysConfigDebugFileLogAttrTypes)
 		}
+		oDebug, dDebug := types.ObjectValueFrom(ctx, sysConfigDebugAttrTypes, sDebug)
+		diags.Append(dDebug...)
+		m.Debug = oDebug
+	} else {
+		m.Debug = types.ObjectNull(sysConfigDebugAttrTypes)
 	}
 	if got.RPCUdp != nil {
-		if m.RPCUdp == nil {
-			m.RPCUdp = &sysConfigRPCUdpModel{}
+		var sRPCUdp sysConfigRPCUdpModel
+		if !m.RPCUdp.IsNull() && !m.RPCUdp.IsUnknown() {
+			diags.Append(m.RPCUdp.As(ctx, &sRPCUdp, basetypes.ObjectAsOptions{})...)
 		}
 		if got.RPCUdp.DstAddr != nil {
-			m.RPCUdp.DstAddr = types.StringValue(*got.RPCUdp.DstAddr)
+			sRPCUdp.DstAddr = types.StringValue(*got.RPCUdp.DstAddr)
+		} else if sRPCUdp.DstAddr.IsUnknown() {
+			sRPCUdp.DstAddr = types.StringNull()
 		}
 		if got.RPCUdp.ListenPort != nil {
-			m.RPCUdp.ListenPort = types.Float64Value(*got.RPCUdp.ListenPort)
+			sRPCUdp.ListenPort = types.Float64Value(*got.RPCUdp.ListenPort)
+		} else if sRPCUdp.ListenPort.IsUnknown() {
+			sRPCUdp.ListenPort = types.Float64Null()
 		}
+		oRPCUdp, dRPCUdp := types.ObjectValueFrom(ctx, sysConfigRPCUdpAttrTypes, sRPCUdp)
+		diags.Append(dRPCUdp...)
+		m.RPCUdp = oRPCUdp
+	} else {
+		m.RPCUdp = types.ObjectNull(sysConfigRPCUdpAttrTypes)
 	}
 	if got.Sntp != nil {
-		if m.Sntp == nil {
-			m.Sntp = &sysConfigSntpModel{}
+		var sSntp sysConfigSntpModel
+		if !m.Sntp.IsNull() && !m.Sntp.IsUnknown() {
+			diags.Append(m.Sntp.As(ctx, &sSntp, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Sntp.Server != nil {
-			m.Sntp.Server = types.StringValue(*got.Sntp.Server)
+			sSntp.Server = types.StringValue(*got.Sntp.Server)
+		} else if sSntp.Server.IsUnknown() {
+			sSntp.Server = types.StringNull()
 		}
+		oSntp, dSntp := types.ObjectValueFrom(ctx, sysConfigSntpAttrTypes, sSntp)
+		diags.Append(dSntp...)
+		m.Sntp = oSntp
+	} else {
+		m.Sntp = types.ObjectNull(sysConfigSntpAttrTypes)
 	}
 	if got.CfgRev != nil {
 		m.CfgRev = types.Float64Value(*got.CfgRev)
+	} else if m.CfgRev.IsUnknown() {
+		m.CfgRev = types.Float64Null()
 	}
 }
 
@@ -424,102 +573,120 @@ func (r *sysConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 func (r *sysConfigResource) apply(ctx context.Context, plan sysConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.SysConfig
-	if plan.Device != nil {
+	if !plan.Device.IsNull() && !plan.Device.IsUnknown() {
+		var wDevice sysConfigDeviceModel
+		diags.Append(plan.Device.As(ctx, &wDevice, basetypes.ObjectAsOptions{})...)
 		cfg.Device = &components.SysConfigDevice{}
-		if !plan.Device.Name.IsNull() && !plan.Device.Name.IsUnknown() {
-			v := plan.Device.Name.ValueString()
+		if !wDevice.Name.IsNull() && !wDevice.Name.IsUnknown() {
+			v := wDevice.Name.ValueString()
 			cfg.Device.Name = &v
 		}
-		if !plan.Device.EcoMode.IsNull() && !plan.Device.EcoMode.IsUnknown() {
-			v := plan.Device.EcoMode.ValueBool()
+		if !wDevice.EcoMode.IsNull() && !wDevice.EcoMode.IsUnknown() {
+			v := wDevice.EcoMode.ValueBool()
 			cfg.Device.EcoMode = &v
 		}
-		if !plan.Device.Profile.IsNull() && !plan.Device.Profile.IsUnknown() {
-			v := plan.Device.Profile.ValueString()
+		if !wDevice.Profile.IsNull() && !wDevice.Profile.IsUnknown() {
+			v := wDevice.Profile.ValueString()
 			cfg.Device.Profile = &v
 		}
-		if !plan.Device.Discoverable.IsNull() && !plan.Device.Discoverable.IsUnknown() {
-			v := plan.Device.Discoverable.ValueBool()
+		if !wDevice.Discoverable.IsNull() && !wDevice.Discoverable.IsUnknown() {
+			v := wDevice.Discoverable.ValueBool()
 			cfg.Device.Discoverable = &v
 		}
-		if !plan.Device.AddonType.IsNull() && !plan.Device.AddonType.IsUnknown() {
-			v := plan.Device.AddonType.ValueString()
+		if !wDevice.AddonType.IsNull() && !wDevice.AddonType.IsUnknown() {
+			v := wDevice.AddonType.ValueString()
 			cfg.Device.AddonType = &v
 		}
-		if !plan.Device.SysBtnToggle.IsNull() && !plan.Device.SysBtnToggle.IsUnknown() {
-			v := plan.Device.SysBtnToggle.ValueBool()
+		if !wDevice.SysBtnToggle.IsNull() && !wDevice.SysBtnToggle.IsUnknown() {
+			v := wDevice.SysBtnToggle.ValueBool()
 			cfg.Device.SysBtnToggle = &v
 		}
-		if !plan.Device.TLSCheckCertValidityTime.IsNull() && !plan.Device.TLSCheckCertValidityTime.IsUnknown() {
-			v := plan.Device.TLSCheckCertValidityTime.ValueBool()
+		if !wDevice.TLSCheckCertValidityTime.IsNull() && !wDevice.TLSCheckCertValidityTime.IsUnknown() {
+			v := wDevice.TLSCheckCertValidityTime.ValueBool()
 			cfg.Device.TLSCheckCertValidityTime = &v
 		}
-		if !plan.Device.EnhancedSecurity.IsNull() && !plan.Device.EnhancedSecurity.IsUnknown() {
-			v := plan.Device.EnhancedSecurity.ValueBool()
+		if !wDevice.EnhancedSecurity.IsNull() && !wDevice.EnhancedSecurity.IsUnknown() {
+			v := wDevice.EnhancedSecurity.ValueBool()
 			cfg.Device.EnhancedSecurity = &v
 		}
 	}
-	if plan.Location != nil {
+	if !plan.Location.IsNull() && !plan.Location.IsUnknown() {
+		var wLocation sysConfigLocationModel
+		diags.Append(plan.Location.As(ctx, &wLocation, basetypes.ObjectAsOptions{})...)
 		cfg.Location = &components.SysConfigLocation{}
-		if !plan.Location.Tz.IsNull() && !plan.Location.Tz.IsUnknown() {
-			v := plan.Location.Tz.ValueString()
+		if !wLocation.Tz.IsNull() && !wLocation.Tz.IsUnknown() {
+			v := wLocation.Tz.ValueString()
 			cfg.Location.Tz = &v
 		}
-		if !plan.Location.Lat.IsNull() && !plan.Location.Lat.IsUnknown() {
-			v := plan.Location.Lat.ValueFloat64()
+		if !wLocation.Lat.IsNull() && !wLocation.Lat.IsUnknown() {
+			v := wLocation.Lat.ValueFloat64()
 			cfg.Location.Lat = &v
 		}
-		if !plan.Location.Lon.IsNull() && !plan.Location.Lon.IsUnknown() {
-			v := plan.Location.Lon.ValueFloat64()
+		if !wLocation.Lon.IsNull() && !wLocation.Lon.IsUnknown() {
+			v := wLocation.Lon.ValueFloat64()
 			cfg.Location.Lon = &v
 		}
 	}
-	if plan.Debug != nil {
+	if !plan.Debug.IsNull() && !plan.Debug.IsUnknown() {
+		var wDebug sysConfigDebugModel
+		diags.Append(plan.Debug.As(ctx, &wDebug, basetypes.ObjectAsOptions{})...)
 		cfg.Debug = &components.SysConfigDebug{}
-		if plan.Debug.MQTT != nil {
+		if !wDebug.MQTT.IsNull() && !wDebug.MQTT.IsUnknown() {
+			var wDebugMQTT sysConfigDebugMQTTModel
+			diags.Append(wDebug.MQTT.As(ctx, &wDebugMQTT, basetypes.ObjectAsOptions{})...)
 			cfg.Debug.MQTT = &components.SysConfigDebugMQTT{}
-			if !plan.Debug.MQTT.Enable.IsNull() && !plan.Debug.MQTT.Enable.IsUnknown() {
-				v := plan.Debug.MQTT.Enable.ValueBool()
+			if !wDebugMQTT.Enable.IsNull() && !wDebugMQTT.Enable.IsUnknown() {
+				v := wDebugMQTT.Enable.ValueBool()
 				cfg.Debug.MQTT.Enable = &v
 			}
 		}
-		if plan.Debug.Websocket != nil {
+		if !wDebug.Websocket.IsNull() && !wDebug.Websocket.IsUnknown() {
+			var wDebugWebsocket sysConfigDebugWebsocketModel
+			diags.Append(wDebug.Websocket.As(ctx, &wDebugWebsocket, basetypes.ObjectAsOptions{})...)
 			cfg.Debug.Websocket = &components.SysConfigDebugWebsocket{}
-			if !plan.Debug.Websocket.Enable.IsNull() && !plan.Debug.Websocket.Enable.IsUnknown() {
-				v := plan.Debug.Websocket.Enable.ValueBool()
+			if !wDebugWebsocket.Enable.IsNull() && !wDebugWebsocket.Enable.IsUnknown() {
+				v := wDebugWebsocket.Enable.ValueBool()
 				cfg.Debug.Websocket.Enable = &v
 			}
 		}
-		if plan.Debug.Udp != nil {
+		if !wDebug.Udp.IsNull() && !wDebug.Udp.IsUnknown() {
+			var wDebugUdp sysConfigDebugUdpModel
+			diags.Append(wDebug.Udp.As(ctx, &wDebugUdp, basetypes.ObjectAsOptions{})...)
 			cfg.Debug.Udp = &components.SysConfigDebugUdp{}
-			if !plan.Debug.Udp.Addr.IsNull() && !plan.Debug.Udp.Addr.IsUnknown() {
-				v := plan.Debug.Udp.Addr.ValueString()
+			if !wDebugUdp.Addr.IsNull() && !wDebugUdp.Addr.IsUnknown() {
+				v := wDebugUdp.Addr.ValueString()
 				cfg.Debug.Udp.Addr = &v
 			}
 		}
-		if plan.Debug.FileLog != nil {
+		if !wDebug.FileLog.IsNull() && !wDebug.FileLog.IsUnknown() {
+			var wDebugFileLog sysConfigDebugFileLogModel
+			diags.Append(wDebug.FileLog.As(ctx, &wDebugFileLog, basetypes.ObjectAsOptions{})...)
 			cfg.Debug.FileLog = &components.SysConfigDebugFileLog{}
-			if !plan.Debug.FileLog.Enable.IsNull() && !plan.Debug.FileLog.Enable.IsUnknown() {
-				v := plan.Debug.FileLog.Enable.ValueBool()
+			if !wDebugFileLog.Enable.IsNull() && !wDebugFileLog.Enable.IsUnknown() {
+				v := wDebugFileLog.Enable.ValueBool()
 				cfg.Debug.FileLog.Enable = &v
 			}
 		}
 	}
-	if plan.RPCUdp != nil {
+	if !plan.RPCUdp.IsNull() && !plan.RPCUdp.IsUnknown() {
+		var wRPCUdp sysConfigRPCUdpModel
+		diags.Append(plan.RPCUdp.As(ctx, &wRPCUdp, basetypes.ObjectAsOptions{})...)
 		cfg.RPCUdp = &components.SysConfigRPCUdp{}
-		if !plan.RPCUdp.DstAddr.IsNull() && !plan.RPCUdp.DstAddr.IsUnknown() {
-			v := plan.RPCUdp.DstAddr.ValueString()
+		if !wRPCUdp.DstAddr.IsNull() && !wRPCUdp.DstAddr.IsUnknown() {
+			v := wRPCUdp.DstAddr.ValueString()
 			cfg.RPCUdp.DstAddr = &v
 		}
-		if !plan.RPCUdp.ListenPort.IsNull() && !plan.RPCUdp.ListenPort.IsUnknown() {
-			v := plan.RPCUdp.ListenPort.ValueFloat64()
+		if !wRPCUdp.ListenPort.IsNull() && !wRPCUdp.ListenPort.IsUnknown() {
+			v := wRPCUdp.ListenPort.ValueFloat64()
 			cfg.RPCUdp.ListenPort = &v
 		}
 	}
-	if plan.Sntp != nil {
+	if !plan.Sntp.IsNull() && !plan.Sntp.IsUnknown() {
+		var wSntp sysConfigSntpModel
+		diags.Append(plan.Sntp.As(ctx, &wSntp, basetypes.ObjectAsOptions{})...)
 		cfg.Sntp = &components.SysConfigSntp{}
-		if !plan.Sntp.Server.IsNull() && !plan.Sntp.Server.IsUnknown() {
-			v := plan.Sntp.Server.ValueString()
+		if !wSntp.Server.IsNull() && !wSntp.Server.IsUnknown() {
+			v := wSntp.Server.ValueString()
 			cfg.Sntp.Server = &v
 		}
 	}

@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 )
 
@@ -36,17 +38,17 @@ type presenceConfigSensorStateModel struct {
 }
 
 type presenceConfigSensorModel struct {
-	Flipped     types.Bool                      `tfsdk:"flipped"`
-	Height      types.Float64                   `tfsdk:"height"`
-	Tilt        types.Float64                   `tfsdk:"tilt"`
-	Points      types.Float64                   `tfsdk:"points"`
-	Velocity    types.Float64                   `tfsdk:"velocity"`
-	Snr         types.Float64                   `tfsdk:"snr"`
-	MaxVelocity types.Float64                   `tfsdk:"max_velocity"`
-	Position    types.String                    `tfsdk:"position"`
-	Power       types.String                    `tfsdk:"power"`
-	Sensitivity types.String                    `tfsdk:"sensitivity"`
-	State       *presenceConfigSensorStateModel `tfsdk:"state"`
+	Flipped     types.Bool    `tfsdk:"flipped"`
+	Height      types.Float64 `tfsdk:"height"`
+	Tilt        types.Float64 `tfsdk:"tilt"`
+	Points      types.Float64 `tfsdk:"points"`
+	Velocity    types.Float64 `tfsdk:"velocity"`
+	Snr         types.Float64 `tfsdk:"snr"`
+	MaxVelocity types.Float64 `tfsdk:"max_velocity"`
+	Position    types.String  `tfsdk:"position"`
+	Power       types.String  `tfsdk:"power"`
+	Sensitivity types.String  `tfsdk:"sensitivity"`
+	State       types.Object  `tfsdk:"state"`
 }
 
 type presenceConfigUIModel struct {
@@ -59,19 +61,55 @@ type presenceConfigLedsNightModeModel struct {
 }
 
 type presenceConfigLedsModel struct {
-	Brightness types.Bool                        `tfsdk:"brightness"`
-	NightMode  *presenceConfigLedsNightModeModel `tfsdk:"night_mode"`
+	Brightness types.Bool   `tfsdk:"brightness"`
+	NightMode  types.Object `tfsdk:"night_mode"`
 }
 
 type presenceConfigResourceModel struct {
-	IP       types.String               `tfsdk:"ip"`
-	Enable   types.Bool                 `tfsdk:"enable"`
-	Zmin     types.Float64              `tfsdk:"zmin"`
-	Zmax     types.Float64              `tfsdk:"zmax"`
-	Sensor   *presenceConfigSensorModel `tfsdk:"sensor"`
-	UI       *presenceConfigUIModel     `tfsdk:"ui"`
-	Leds     *presenceConfigLedsModel   `tfsdk:"leds"`
-	MainZone types.String               `tfsdk:"main_zone"`
+	IP       types.String  `tfsdk:"ip"`
+	Enable   types.Bool    `tfsdk:"enable"`
+	Zmin     types.Float64 `tfsdk:"zmin"`
+	Zmax     types.Float64 `tfsdk:"zmax"`
+	Sensor   types.Object  `tfsdk:"sensor"`
+	UI       types.Object  `tfsdk:"ui"`
+	Leds     types.Object  `tfsdk:"leds"`
+	MainZone types.String  `tfsdk:"main_zone"`
+}
+
+var presenceConfigSensorStateAttrTypes = map[string]attr.Type{
+	"det_act_thr":    types.Float64Type,
+	"det_free_thr":   types.Float64Type,
+	"act_free_thr":   types.Float64Type,
+	"stat_free_thr":  types.Float64Type,
+	"sleep_free_thr": types.Float64Type,
+}
+
+var presenceConfigSensorAttrTypes = map[string]attr.Type{
+	"flipped":      types.BoolType,
+	"height":       types.Float64Type,
+	"tilt":         types.Float64Type,
+	"points":       types.Float64Type,
+	"velocity":     types.Float64Type,
+	"snr":          types.Float64Type,
+	"max_velocity": types.Float64Type,
+	"position":     types.StringType,
+	"power":        types.StringType,
+	"sensitivity":  types.StringType,
+	"state":        types.ObjectType{AttrTypes: presenceConfigSensorStateAttrTypes},
+}
+
+var presenceConfigUIAttrTypes = map[string]attr.Type{
+	"imperial": types.BoolType,
+}
+
+var presenceConfigLedsNightModeAttrTypes = map[string]attr.Type{
+	"enable":     types.BoolType,
+	"brightness": types.Float64Type,
+}
+
+var presenceConfigLedsAttrTypes = map[string]attr.Type{
+	"brightness": types.BoolType,
+	"night_mode": types.ObjectType{AttrTypes: presenceConfigLedsNightModeAttrTypes},
 }
 
 func (r *presenceConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -270,97 +308,173 @@ func (r *presenceConfigResource) get(ctx context.Context, m *presenceConfigResou
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 	if got.Zmin != nil {
 		m.Zmin = types.Float64Value(*got.Zmin)
+	} else if m.Zmin.IsUnknown() {
+		m.Zmin = types.Float64Null()
 	}
 	if got.Zmax != nil {
 		m.Zmax = types.Float64Value(*got.Zmax)
+	} else if m.Zmax.IsUnknown() {
+		m.Zmax = types.Float64Null()
 	}
 	if got.Sensor != nil {
-		if m.Sensor == nil {
-			m.Sensor = &presenceConfigSensorModel{}
+		var sSensor presenceConfigSensorModel
+		if !m.Sensor.IsNull() && !m.Sensor.IsUnknown() {
+			diags.Append(m.Sensor.As(ctx, &sSensor, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Sensor.Flipped != nil {
-			m.Sensor.Flipped = types.BoolValue(*got.Sensor.Flipped)
+			sSensor.Flipped = types.BoolValue(*got.Sensor.Flipped)
+		} else if sSensor.Flipped.IsUnknown() {
+			sSensor.Flipped = types.BoolNull()
 		}
 		if got.Sensor.Height != nil {
-			m.Sensor.Height = types.Float64Value(*got.Sensor.Height)
+			sSensor.Height = types.Float64Value(*got.Sensor.Height)
+		} else if sSensor.Height.IsUnknown() {
+			sSensor.Height = types.Float64Null()
 		}
 		if got.Sensor.Tilt != nil {
-			m.Sensor.Tilt = types.Float64Value(*got.Sensor.Tilt)
+			sSensor.Tilt = types.Float64Value(*got.Sensor.Tilt)
+		} else if sSensor.Tilt.IsUnknown() {
+			sSensor.Tilt = types.Float64Null()
 		}
 		if got.Sensor.Points != nil {
-			m.Sensor.Points = types.Float64Value(*got.Sensor.Points)
+			sSensor.Points = types.Float64Value(*got.Sensor.Points)
+		} else if sSensor.Points.IsUnknown() {
+			sSensor.Points = types.Float64Null()
 		}
 		if got.Sensor.Velocity != nil {
-			m.Sensor.Velocity = types.Float64Value(*got.Sensor.Velocity)
+			sSensor.Velocity = types.Float64Value(*got.Sensor.Velocity)
+		} else if sSensor.Velocity.IsUnknown() {
+			sSensor.Velocity = types.Float64Null()
 		}
 		if got.Sensor.Snr != nil {
-			m.Sensor.Snr = types.Float64Value(*got.Sensor.Snr)
+			sSensor.Snr = types.Float64Value(*got.Sensor.Snr)
+		} else if sSensor.Snr.IsUnknown() {
+			sSensor.Snr = types.Float64Null()
 		}
 		if got.Sensor.MaxVelocity != nil {
-			m.Sensor.MaxVelocity = types.Float64Value(*got.Sensor.MaxVelocity)
+			sSensor.MaxVelocity = types.Float64Value(*got.Sensor.MaxVelocity)
+		} else if sSensor.MaxVelocity.IsUnknown() {
+			sSensor.MaxVelocity = types.Float64Null()
 		}
 		if got.Sensor.Position != nil {
-			m.Sensor.Position = types.StringValue(*got.Sensor.Position)
+			sSensor.Position = types.StringValue(*got.Sensor.Position)
+		} else if sSensor.Position.IsUnknown() {
+			sSensor.Position = types.StringNull()
 		}
 		if got.Sensor.Power != nil {
-			m.Sensor.Power = types.StringValue(*got.Sensor.Power)
+			sSensor.Power = types.StringValue(*got.Sensor.Power)
+		} else if sSensor.Power.IsUnknown() {
+			sSensor.Power = types.StringNull()
 		}
 		if got.Sensor.Sensitivity != nil {
-			m.Sensor.Sensitivity = types.StringValue(*got.Sensor.Sensitivity)
+			sSensor.Sensitivity = types.StringValue(*got.Sensor.Sensitivity)
+		} else if sSensor.Sensitivity.IsUnknown() {
+			sSensor.Sensitivity = types.StringNull()
 		}
 		if got.Sensor.State != nil {
-			if m.Sensor.State == nil {
-				m.Sensor.State = &presenceConfigSensorStateModel{}
+			var sSensorState presenceConfigSensorStateModel
+			if !sSensor.State.IsNull() && !sSensor.State.IsUnknown() {
+				diags.Append(sSensor.State.As(ctx, &sSensorState, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Sensor.State.DetActThr != nil {
-				m.Sensor.State.DetActThr = types.Float64Value(*got.Sensor.State.DetActThr)
+				sSensorState.DetActThr = types.Float64Value(*got.Sensor.State.DetActThr)
+			} else if sSensorState.DetActThr.IsUnknown() {
+				sSensorState.DetActThr = types.Float64Null()
 			}
 			if got.Sensor.State.DetFreeThr != nil {
-				m.Sensor.State.DetFreeThr = types.Float64Value(*got.Sensor.State.DetFreeThr)
+				sSensorState.DetFreeThr = types.Float64Value(*got.Sensor.State.DetFreeThr)
+			} else if sSensorState.DetFreeThr.IsUnknown() {
+				sSensorState.DetFreeThr = types.Float64Null()
 			}
 			if got.Sensor.State.ActFreeThr != nil {
-				m.Sensor.State.ActFreeThr = types.Float64Value(*got.Sensor.State.ActFreeThr)
+				sSensorState.ActFreeThr = types.Float64Value(*got.Sensor.State.ActFreeThr)
+			} else if sSensorState.ActFreeThr.IsUnknown() {
+				sSensorState.ActFreeThr = types.Float64Null()
 			}
 			if got.Sensor.State.StatFreeThr != nil {
-				m.Sensor.State.StatFreeThr = types.Float64Value(*got.Sensor.State.StatFreeThr)
+				sSensorState.StatFreeThr = types.Float64Value(*got.Sensor.State.StatFreeThr)
+			} else if sSensorState.StatFreeThr.IsUnknown() {
+				sSensorState.StatFreeThr = types.Float64Null()
 			}
 			if got.Sensor.State.SleepFreeThr != nil {
-				m.Sensor.State.SleepFreeThr = types.Float64Value(*got.Sensor.State.SleepFreeThr)
+				sSensorState.SleepFreeThr = types.Float64Value(*got.Sensor.State.SleepFreeThr)
+			} else if sSensorState.SleepFreeThr.IsUnknown() {
+				sSensorState.SleepFreeThr = types.Float64Null()
 			}
+			oSensorState, dSensorState := types.ObjectValueFrom(ctx, presenceConfigSensorStateAttrTypes, sSensorState)
+			diags.Append(dSensorState...)
+			sSensor.State = oSensorState
+		} else {
+			sSensor.State = types.ObjectNull(presenceConfigSensorStateAttrTypes)
 		}
+		oSensor, dSensor := types.ObjectValueFrom(ctx, presenceConfigSensorAttrTypes, sSensor)
+		diags.Append(dSensor...)
+		m.Sensor = oSensor
+	} else {
+		m.Sensor = types.ObjectNull(presenceConfigSensorAttrTypes)
 	}
 	if got.UI != nil {
-		if m.UI == nil {
-			m.UI = &presenceConfigUIModel{}
+		var sUI presenceConfigUIModel
+		if !m.UI.IsNull() && !m.UI.IsUnknown() {
+			diags.Append(m.UI.As(ctx, &sUI, basetypes.ObjectAsOptions{})...)
 		}
 		if got.UI.Imperial != nil {
-			m.UI.Imperial = types.BoolValue(*got.UI.Imperial)
+			sUI.Imperial = types.BoolValue(*got.UI.Imperial)
+		} else if sUI.Imperial.IsUnknown() {
+			sUI.Imperial = types.BoolNull()
 		}
+		oUI, dUI := types.ObjectValueFrom(ctx, presenceConfigUIAttrTypes, sUI)
+		diags.Append(dUI...)
+		m.UI = oUI
+	} else {
+		m.UI = types.ObjectNull(presenceConfigUIAttrTypes)
 	}
 	if got.Leds != nil {
-		if m.Leds == nil {
-			m.Leds = &presenceConfigLedsModel{}
+		var sLeds presenceConfigLedsModel
+		if !m.Leds.IsNull() && !m.Leds.IsUnknown() {
+			diags.Append(m.Leds.As(ctx, &sLeds, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Leds.Brightness != nil {
-			m.Leds.Brightness = types.BoolValue(*got.Leds.Brightness)
+			sLeds.Brightness = types.BoolValue(*got.Leds.Brightness)
+		} else if sLeds.Brightness.IsUnknown() {
+			sLeds.Brightness = types.BoolNull()
 		}
 		if got.Leds.NightMode != nil {
-			if m.Leds.NightMode == nil {
-				m.Leds.NightMode = &presenceConfigLedsNightModeModel{}
+			var sLedsNightMode presenceConfigLedsNightModeModel
+			if !sLeds.NightMode.IsNull() && !sLeds.NightMode.IsUnknown() {
+				diags.Append(sLeds.NightMode.As(ctx, &sLedsNightMode, basetypes.ObjectAsOptions{})...)
 			}
 			if got.Leds.NightMode.Enable != nil {
-				m.Leds.NightMode.Enable = types.BoolValue(*got.Leds.NightMode.Enable)
+				sLedsNightMode.Enable = types.BoolValue(*got.Leds.NightMode.Enable)
+			} else if sLedsNightMode.Enable.IsUnknown() {
+				sLedsNightMode.Enable = types.BoolNull()
 			}
 			if got.Leds.NightMode.Brightness != nil {
-				m.Leds.NightMode.Brightness = types.Float64Value(*got.Leds.NightMode.Brightness)
+				sLedsNightMode.Brightness = types.Float64Value(*got.Leds.NightMode.Brightness)
+			} else if sLedsNightMode.Brightness.IsUnknown() {
+				sLedsNightMode.Brightness = types.Float64Null()
 			}
+			oLedsNightMode, dLedsNightMode := types.ObjectValueFrom(ctx, presenceConfigLedsNightModeAttrTypes, sLedsNightMode)
+			diags.Append(dLedsNightMode...)
+			sLeds.NightMode = oLedsNightMode
+		} else {
+			sLeds.NightMode = types.ObjectNull(presenceConfigLedsNightModeAttrTypes)
 		}
+		oLeds, dLeds := types.ObjectValueFrom(ctx, presenceConfigLedsAttrTypes, sLeds)
+		diags.Append(dLeds...)
+		m.Leds = oLeds
+	} else {
+		m.Leds = types.ObjectNull(presenceConfigLedsAttrTypes)
 	}
 	if got.MainZone != nil {
 		m.MainZone = types.StringValue(*got.MainZone)
+	} else if m.MainZone.IsUnknown() {
+		m.MainZone = types.StringNull()
 	}
 }
 
@@ -391,93 +505,103 @@ func (r *presenceConfigResource) apply(ctx context.Context, plan presenceConfigR
 		v := plan.Zmax.ValueFloat64()
 		cfg.Zmax = &v
 	}
-	if plan.Sensor != nil {
+	if !plan.Sensor.IsNull() && !plan.Sensor.IsUnknown() {
+		var wSensor presenceConfigSensorModel
+		diags.Append(plan.Sensor.As(ctx, &wSensor, basetypes.ObjectAsOptions{})...)
 		cfg.Sensor = &components.PresenceConfigSensor{}
-		if !plan.Sensor.Flipped.IsNull() && !plan.Sensor.Flipped.IsUnknown() {
-			v := plan.Sensor.Flipped.ValueBool()
+		if !wSensor.Flipped.IsNull() && !wSensor.Flipped.IsUnknown() {
+			v := wSensor.Flipped.ValueBool()
 			cfg.Sensor.Flipped = &v
 		}
-		if !plan.Sensor.Height.IsNull() && !plan.Sensor.Height.IsUnknown() {
-			v := plan.Sensor.Height.ValueFloat64()
+		if !wSensor.Height.IsNull() && !wSensor.Height.IsUnknown() {
+			v := wSensor.Height.ValueFloat64()
 			cfg.Sensor.Height = &v
 		}
-		if !plan.Sensor.Tilt.IsNull() && !plan.Sensor.Tilt.IsUnknown() {
-			v := plan.Sensor.Tilt.ValueFloat64()
+		if !wSensor.Tilt.IsNull() && !wSensor.Tilt.IsUnknown() {
+			v := wSensor.Tilt.ValueFloat64()
 			cfg.Sensor.Tilt = &v
 		}
-		if !plan.Sensor.Points.IsNull() && !plan.Sensor.Points.IsUnknown() {
-			v := plan.Sensor.Points.ValueFloat64()
+		if !wSensor.Points.IsNull() && !wSensor.Points.IsUnknown() {
+			v := wSensor.Points.ValueFloat64()
 			cfg.Sensor.Points = &v
 		}
-		if !plan.Sensor.Velocity.IsNull() && !plan.Sensor.Velocity.IsUnknown() {
-			v := plan.Sensor.Velocity.ValueFloat64()
+		if !wSensor.Velocity.IsNull() && !wSensor.Velocity.IsUnknown() {
+			v := wSensor.Velocity.ValueFloat64()
 			cfg.Sensor.Velocity = &v
 		}
-		if !plan.Sensor.Snr.IsNull() && !plan.Sensor.Snr.IsUnknown() {
-			v := plan.Sensor.Snr.ValueFloat64()
+		if !wSensor.Snr.IsNull() && !wSensor.Snr.IsUnknown() {
+			v := wSensor.Snr.ValueFloat64()
 			cfg.Sensor.Snr = &v
 		}
-		if !plan.Sensor.MaxVelocity.IsNull() && !plan.Sensor.MaxVelocity.IsUnknown() {
-			v := plan.Sensor.MaxVelocity.ValueFloat64()
+		if !wSensor.MaxVelocity.IsNull() && !wSensor.MaxVelocity.IsUnknown() {
+			v := wSensor.MaxVelocity.ValueFloat64()
 			cfg.Sensor.MaxVelocity = &v
 		}
-		if !plan.Sensor.Position.IsNull() && !plan.Sensor.Position.IsUnknown() {
-			v := plan.Sensor.Position.ValueString()
+		if !wSensor.Position.IsNull() && !wSensor.Position.IsUnknown() {
+			v := wSensor.Position.ValueString()
 			cfg.Sensor.Position = &v
 		}
-		if !plan.Sensor.Power.IsNull() && !plan.Sensor.Power.IsUnknown() {
-			v := plan.Sensor.Power.ValueString()
+		if !wSensor.Power.IsNull() && !wSensor.Power.IsUnknown() {
+			v := wSensor.Power.ValueString()
 			cfg.Sensor.Power = &v
 		}
-		if !plan.Sensor.Sensitivity.IsNull() && !plan.Sensor.Sensitivity.IsUnknown() {
-			v := plan.Sensor.Sensitivity.ValueString()
+		if !wSensor.Sensitivity.IsNull() && !wSensor.Sensitivity.IsUnknown() {
+			v := wSensor.Sensitivity.ValueString()
 			cfg.Sensor.Sensitivity = &v
 		}
-		if plan.Sensor.State != nil {
+		if !wSensor.State.IsNull() && !wSensor.State.IsUnknown() {
+			var wSensorState presenceConfigSensorStateModel
+			diags.Append(wSensor.State.As(ctx, &wSensorState, basetypes.ObjectAsOptions{})...)
 			cfg.Sensor.State = &components.PresenceConfigSensorState{}
-			if !plan.Sensor.State.DetActThr.IsNull() && !plan.Sensor.State.DetActThr.IsUnknown() {
-				v := plan.Sensor.State.DetActThr.ValueFloat64()
+			if !wSensorState.DetActThr.IsNull() && !wSensorState.DetActThr.IsUnknown() {
+				v := wSensorState.DetActThr.ValueFloat64()
 				cfg.Sensor.State.DetActThr = &v
 			}
-			if !plan.Sensor.State.DetFreeThr.IsNull() && !plan.Sensor.State.DetFreeThr.IsUnknown() {
-				v := plan.Sensor.State.DetFreeThr.ValueFloat64()
+			if !wSensorState.DetFreeThr.IsNull() && !wSensorState.DetFreeThr.IsUnknown() {
+				v := wSensorState.DetFreeThr.ValueFloat64()
 				cfg.Sensor.State.DetFreeThr = &v
 			}
-			if !plan.Sensor.State.ActFreeThr.IsNull() && !plan.Sensor.State.ActFreeThr.IsUnknown() {
-				v := plan.Sensor.State.ActFreeThr.ValueFloat64()
+			if !wSensorState.ActFreeThr.IsNull() && !wSensorState.ActFreeThr.IsUnknown() {
+				v := wSensorState.ActFreeThr.ValueFloat64()
 				cfg.Sensor.State.ActFreeThr = &v
 			}
-			if !plan.Sensor.State.StatFreeThr.IsNull() && !plan.Sensor.State.StatFreeThr.IsUnknown() {
-				v := plan.Sensor.State.StatFreeThr.ValueFloat64()
+			if !wSensorState.StatFreeThr.IsNull() && !wSensorState.StatFreeThr.IsUnknown() {
+				v := wSensorState.StatFreeThr.ValueFloat64()
 				cfg.Sensor.State.StatFreeThr = &v
 			}
-			if !plan.Sensor.State.SleepFreeThr.IsNull() && !plan.Sensor.State.SleepFreeThr.IsUnknown() {
-				v := plan.Sensor.State.SleepFreeThr.ValueFloat64()
+			if !wSensorState.SleepFreeThr.IsNull() && !wSensorState.SleepFreeThr.IsUnknown() {
+				v := wSensorState.SleepFreeThr.ValueFloat64()
 				cfg.Sensor.State.SleepFreeThr = &v
 			}
 		}
 	}
-	if plan.UI != nil {
+	if !plan.UI.IsNull() && !plan.UI.IsUnknown() {
+		var wUI presenceConfigUIModel
+		diags.Append(plan.UI.As(ctx, &wUI, basetypes.ObjectAsOptions{})...)
 		cfg.UI = &components.PresenceConfigUI{}
-		if !plan.UI.Imperial.IsNull() && !plan.UI.Imperial.IsUnknown() {
-			v := plan.UI.Imperial.ValueBool()
+		if !wUI.Imperial.IsNull() && !wUI.Imperial.IsUnknown() {
+			v := wUI.Imperial.ValueBool()
 			cfg.UI.Imperial = &v
 		}
 	}
-	if plan.Leds != nil {
+	if !plan.Leds.IsNull() && !plan.Leds.IsUnknown() {
+		var wLeds presenceConfigLedsModel
+		diags.Append(plan.Leds.As(ctx, &wLeds, basetypes.ObjectAsOptions{})...)
 		cfg.Leds = &components.PresenceConfigLeds{}
-		if !plan.Leds.Brightness.IsNull() && !plan.Leds.Brightness.IsUnknown() {
-			v := plan.Leds.Brightness.ValueBool()
+		if !wLeds.Brightness.IsNull() && !wLeds.Brightness.IsUnknown() {
+			v := wLeds.Brightness.ValueBool()
 			cfg.Leds.Brightness = &v
 		}
-		if plan.Leds.NightMode != nil {
+		if !wLeds.NightMode.IsNull() && !wLeds.NightMode.IsUnknown() {
+			var wLedsNightMode presenceConfigLedsNightModeModel
+			diags.Append(wLeds.NightMode.As(ctx, &wLedsNightMode, basetypes.ObjectAsOptions{})...)
 			cfg.Leds.NightMode = &components.PresenceConfigLedsNightMode{}
-			if !plan.Leds.NightMode.Enable.IsNull() && !plan.Leds.NightMode.Enable.IsUnknown() {
-				v := plan.Leds.NightMode.Enable.ValueBool()
+			if !wLedsNightMode.Enable.IsNull() && !wLedsNightMode.Enable.IsUnknown() {
+				v := wLedsNightMode.Enable.ValueBool()
 				cfg.Leds.NightMode.Enable = &v
 			}
-			if !plan.Leds.NightMode.Brightness.IsNull() && !plan.Leds.NightMode.Brightness.IsUnknown() {
-				v := plan.Leds.NightMode.Brightness.ValueFloat64()
+			if !wLedsNightMode.Brightness.IsNull() && !wLedsNightMode.Brightness.IsUnknown() {
+				v := wLedsNightMode.Brightness.ValueFloat64()
 				cfg.Leds.NightMode.Brightness = &v
 			}
 		}

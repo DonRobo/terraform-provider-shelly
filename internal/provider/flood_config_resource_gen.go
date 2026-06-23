@@ -78,12 +78,18 @@ func (r *floodConfigResource) get(ctx context.Context, m *floodConfigResourceMod
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.AlarmMode != nil {
 		m.AlarmMode = types.StringValue(*got.AlarmMode)
+	} else if m.AlarmMode.IsUnknown() {
+		m.AlarmMode = types.StringNull()
 	}
 	if got.ReportHoldoff != nil {
 		m.ReportHoldoff = types.Float64Value(*got.ReportHoldoff)
+	} else if m.ReportHoldoff.IsUnknown() {
+		m.ReportHoldoff = types.Float64Null()
 	}
 }
 

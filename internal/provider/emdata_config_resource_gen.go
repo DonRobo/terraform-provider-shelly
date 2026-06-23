@@ -121,32 +121,50 @@ func (r *emdataConfigResource) get(ctx context.Context, m *emdataConfigResourceM
 	}
 	if got.ATotalActEnergy != nil {
 		m.ATotalActEnergy = types.Float64Value(*got.ATotalActEnergy)
+	} else if m.ATotalActEnergy.IsUnknown() {
+		m.ATotalActEnergy = types.Float64Null()
 	}
 	if got.ATotalActRetEnergy != nil {
 		m.ATotalActRetEnergy = types.Float64Value(*got.ATotalActRetEnergy)
+	} else if m.ATotalActRetEnergy.IsUnknown() {
+		m.ATotalActRetEnergy = types.Float64Null()
 	}
 	if got.BTotalActEnergy != nil {
 		m.BTotalActEnergy = types.Float64Value(*got.BTotalActEnergy)
+	} else if m.BTotalActEnergy.IsUnknown() {
+		m.BTotalActEnergy = types.Float64Null()
 	}
 	if got.BTotalActRetEnergy != nil {
 		m.BTotalActRetEnergy = types.Float64Value(*got.BTotalActRetEnergy)
+	} else if m.BTotalActRetEnergy.IsUnknown() {
+		m.BTotalActRetEnergy = types.Float64Null()
 	}
 	if got.CTotalActEnergy != nil {
 		m.CTotalActEnergy = types.Float64Value(*got.CTotalActEnergy)
+	} else if m.CTotalActEnergy.IsUnknown() {
+		m.CTotalActEnergy = types.Float64Null()
 	}
 	if got.CTotalActRetEnergy != nil {
 		m.CTotalActRetEnergy = types.Float64Value(*got.CTotalActRetEnergy)
+	} else if m.CTotalActRetEnergy.IsUnknown() {
+		m.CTotalActRetEnergy = types.Float64Null()
 	}
 	if got.TotalAct != nil {
 		m.TotalAct = types.Float64Value(*got.TotalAct)
+	} else if m.TotalAct.IsUnknown() {
+		m.TotalAct = types.Float64Null()
 	}
 	if got.TotalActRet != nil {
 		m.TotalActRet = types.Float64Value(*got.TotalActRet)
+	} else if m.TotalActRet.IsUnknown() {
+		m.TotalActRet = types.Float64Null()
 	}
 	if got.Errors != nil {
 		l, d := types.ListValueFrom(ctx, types.StringType, got.Errors)
 		diags.Append(d...)
 		m.Errors = l
+	} else if m.Errors.IsUnknown() {
+		m.Errors = types.ListNull(types.StringType)
 	}
 }
 

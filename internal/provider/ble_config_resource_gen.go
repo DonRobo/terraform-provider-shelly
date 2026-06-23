@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 )
 
@@ -30,8 +32,12 @@ type bleConfigRPCModel struct {
 }
 
 type bleConfigResourceModel struct {
-	IP  types.String       `tfsdk:"ip"`
-	RPC *bleConfigRPCModel `tfsdk:"rpc"`
+	IP  types.String `tfsdk:"ip"`
+	RPC types.Object `tfsdk:"rpc"`
+}
+
+var bleConfigRPCAttrTypes = map[string]attr.Type{
+	"enable": types.BoolType,
 }
 
 func (r *bleConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -69,12 +75,20 @@ func (r *bleConfigResource) get(ctx context.Context, m *bleConfigResourceModel, 
 		return
 	}
 	if got.RPC != nil {
-		if m.RPC == nil {
-			m.RPC = &bleConfigRPCModel{}
+		var sRPC bleConfigRPCModel
+		if !m.RPC.IsNull() && !m.RPC.IsUnknown() {
+			diags.Append(m.RPC.As(ctx, &sRPC, basetypes.ObjectAsOptions{})...)
 		}
 		if got.RPC.Enable != nil {
-			m.RPC.Enable = types.BoolValue(*got.RPC.Enable)
+			sRPC.Enable = types.BoolValue(*got.RPC.Enable)
+		} else if sRPC.Enable.IsUnknown() {
+			sRPC.Enable = types.BoolNull()
 		}
+		oRPC, dRPC := types.ObjectValueFrom(ctx, bleConfigRPCAttrTypes, sRPC)
+		diags.Append(dRPC...)
+		m.RPC = oRPC
+	} else {
+		m.RPC = types.ObjectNull(bleConfigRPCAttrTypes)
 	}
 }
 
@@ -93,10 +107,12 @@ func (r *bleConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 func (r *bleConfigResource) apply(ctx context.Context, plan bleConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.BLEConfig
-	if plan.RPC != nil {
+	if !plan.RPC.IsNull() && !plan.RPC.IsUnknown() {
+		var wRPC bleConfigRPCModel
+		diags.Append(plan.RPC.As(ctx, &wRPC, basetypes.ObjectAsOptions{})...)
 		cfg.RPC = &components.BLEConfigRPC{}
-		if !plan.RPC.Enable.IsNull() && !plan.RPC.Enable.IsUnknown() {
-			v := plan.RPC.Enable.ValueBool()
+		if !wRPC.Enable.IsNull() && !wRPC.Enable.IsUnknown() {
+			v := wRPC.Enable.ValueBool()
 			cfg.RPC.Enable = &v
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -63,25 +65,54 @@ type coverConfigSlatModel struct {
 }
 
 type coverConfigResourceModel struct {
-	IP                   types.String                          `tfsdk:"ip"`
-	ID                   types.Int64                           `tfsdk:"id"`
-	Name                 types.String                          `tfsdk:"name"`
-	InMode               types.String                          `tfsdk:"in_mode"`
-	InLocked             types.Bool                            `tfsdk:"in_locked"`
-	InitialState         types.String                          `tfsdk:"initial_state"`
-	PowerLimit           types.Float64                         `tfsdk:"power_limit"`
-	VoltageLimit         types.Float64                         `tfsdk:"voltage_limit"`
-	UndervoltageLimit    types.Float64                         `tfsdk:"undervoltage_limit"`
-	CurrentLimit         types.Float64                         `tfsdk:"current_limit"`
-	Motor                *coverConfigMotorModel                `tfsdk:"motor"`
-	MaxtimeOpen          types.Float64                         `tfsdk:"maxtime_open"`
-	MaxtimeClose         types.Float64                         `tfsdk:"maxtime_close"`
-	InvertDirections     types.Bool                            `tfsdk:"invert_directions"`
-	MaintenanceMode      types.Bool                            `tfsdk:"maintenance_mode"`
-	ObstructionDetection *coverConfigObstructionDetectionModel `tfsdk:"obstruction_detection"`
-	SafetySwitch         *coverConfigSafetySwitchModel         `tfsdk:"safety_switch"`
-	Slat                 *coverConfigSlatModel                 `tfsdk:"slat"`
-	SwapInputs           types.Bool                            `tfsdk:"swap_inputs"`
+	IP                   types.String  `tfsdk:"ip"`
+	ID                   types.Int64   `tfsdk:"id"`
+	Name                 types.String  `tfsdk:"name"`
+	InMode               types.String  `tfsdk:"in_mode"`
+	InLocked             types.Bool    `tfsdk:"in_locked"`
+	InitialState         types.String  `tfsdk:"initial_state"`
+	PowerLimit           types.Float64 `tfsdk:"power_limit"`
+	VoltageLimit         types.Float64 `tfsdk:"voltage_limit"`
+	UndervoltageLimit    types.Float64 `tfsdk:"undervoltage_limit"`
+	CurrentLimit         types.Float64 `tfsdk:"current_limit"`
+	Motor                types.Object  `tfsdk:"motor"`
+	MaxtimeOpen          types.Float64 `tfsdk:"maxtime_open"`
+	MaxtimeClose         types.Float64 `tfsdk:"maxtime_close"`
+	InvertDirections     types.Bool    `tfsdk:"invert_directions"`
+	MaintenanceMode      types.Bool    `tfsdk:"maintenance_mode"`
+	ObstructionDetection types.Object  `tfsdk:"obstruction_detection"`
+	SafetySwitch         types.Object  `tfsdk:"safety_switch"`
+	Slat                 types.Object  `tfsdk:"slat"`
+	SwapInputs           types.Bool    `tfsdk:"swap_inputs"`
+}
+
+var coverConfigMotorAttrTypes = map[string]attr.Type{
+	"idle_power_thr":      types.Float64Type,
+	"idle_confirm_period": types.Float64Type,
+}
+
+var coverConfigObstructionDetectionAttrTypes = map[string]attr.Type{
+	"enable":    types.BoolType,
+	"direction": types.StringType,
+	"action":    types.StringType,
+	"power_thr": types.Float64Type,
+	"holdoff":   types.Float64Type,
+}
+
+var coverConfigSafetySwitchAttrTypes = map[string]attr.Type{
+	"enable":       types.BoolType,
+	"direction":    types.StringType,
+	"action":       types.StringType,
+	"allowed_move": types.StringType,
+}
+
+var coverConfigSlatAttrTypes = map[string]attr.Type{
+	"enable":      types.BoolType,
+	"open_time":   types.Float64Type,
+	"close_time":  types.Float64Type,
+	"step":        types.Float64Type,
+	"retain_pos":  types.BoolType,
+	"precise_ctl": types.BoolType,
 }
 
 func (r *coverConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -323,113 +354,197 @@ func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceMod
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.InMode != nil {
 		m.InMode = types.StringValue(*got.InMode)
+	} else if m.InMode.IsUnknown() {
+		m.InMode = types.StringNull()
 	}
 	if got.InLocked != nil {
 		m.InLocked = types.BoolValue(*got.InLocked)
+	} else if m.InLocked.IsUnknown() {
+		m.InLocked = types.BoolNull()
 	}
 	if got.InitialState != nil {
 		m.InitialState = types.StringValue(*got.InitialState)
+	} else if m.InitialState.IsUnknown() {
+		m.InitialState = types.StringNull()
 	}
 	if got.PowerLimit != nil {
 		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	} else if m.PowerLimit.IsUnknown() {
+		m.PowerLimit = types.Float64Null()
 	}
 	if got.VoltageLimit != nil {
 		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	} else if m.VoltageLimit.IsUnknown() {
+		m.VoltageLimit = types.Float64Null()
 	}
 	if got.UndervoltageLimit != nil {
 		m.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
+	} else if m.UndervoltageLimit.IsUnknown() {
+		m.UndervoltageLimit = types.Float64Null()
 	}
 	if got.CurrentLimit != nil {
 		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	} else if m.CurrentLimit.IsUnknown() {
+		m.CurrentLimit = types.Float64Null()
 	}
 	if got.Motor != nil {
-		if m.Motor == nil {
-			m.Motor = &coverConfigMotorModel{}
+		var sMotor coverConfigMotorModel
+		if !m.Motor.IsNull() && !m.Motor.IsUnknown() {
+			diags.Append(m.Motor.As(ctx, &sMotor, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Motor.IdlePowerThr != nil {
-			m.Motor.IdlePowerThr = types.Float64Value(*got.Motor.IdlePowerThr)
+			sMotor.IdlePowerThr = types.Float64Value(*got.Motor.IdlePowerThr)
+		} else if sMotor.IdlePowerThr.IsUnknown() {
+			sMotor.IdlePowerThr = types.Float64Null()
 		}
 		if got.Motor.IdleConfirmPeriod != nil {
-			m.Motor.IdleConfirmPeriod = types.Float64Value(*got.Motor.IdleConfirmPeriod)
+			sMotor.IdleConfirmPeriod = types.Float64Value(*got.Motor.IdleConfirmPeriod)
+		} else if sMotor.IdleConfirmPeriod.IsUnknown() {
+			sMotor.IdleConfirmPeriod = types.Float64Null()
 		}
+		oMotor, dMotor := types.ObjectValueFrom(ctx, coverConfigMotorAttrTypes, sMotor)
+		diags.Append(dMotor...)
+		m.Motor = oMotor
+	} else {
+		m.Motor = types.ObjectNull(coverConfigMotorAttrTypes)
 	}
 	if got.MaxtimeOpen != nil {
 		m.MaxtimeOpen = types.Float64Value(*got.MaxtimeOpen)
+	} else if m.MaxtimeOpen.IsUnknown() {
+		m.MaxtimeOpen = types.Float64Null()
 	}
 	if got.MaxtimeClose != nil {
 		m.MaxtimeClose = types.Float64Value(*got.MaxtimeClose)
+	} else if m.MaxtimeClose.IsUnknown() {
+		m.MaxtimeClose = types.Float64Null()
 	}
 	if got.InvertDirections != nil {
 		m.InvertDirections = types.BoolValue(*got.InvertDirections)
+	} else if m.InvertDirections.IsUnknown() {
+		m.InvertDirections = types.BoolNull()
 	}
 	if got.MaintenanceMode != nil {
 		m.MaintenanceMode = types.BoolValue(*got.MaintenanceMode)
+	} else if m.MaintenanceMode.IsUnknown() {
+		m.MaintenanceMode = types.BoolNull()
 	}
 	if got.ObstructionDetection != nil {
-		if m.ObstructionDetection == nil {
-			m.ObstructionDetection = &coverConfigObstructionDetectionModel{}
+		var sObstructionDetection coverConfigObstructionDetectionModel
+		if !m.ObstructionDetection.IsNull() && !m.ObstructionDetection.IsUnknown() {
+			diags.Append(m.ObstructionDetection.As(ctx, &sObstructionDetection, basetypes.ObjectAsOptions{})...)
 		}
 		if got.ObstructionDetection.Enable != nil {
-			m.ObstructionDetection.Enable = types.BoolValue(*got.ObstructionDetection.Enable)
+			sObstructionDetection.Enable = types.BoolValue(*got.ObstructionDetection.Enable)
+		} else if sObstructionDetection.Enable.IsUnknown() {
+			sObstructionDetection.Enable = types.BoolNull()
 		}
 		if got.ObstructionDetection.Direction != nil {
-			m.ObstructionDetection.Direction = types.StringValue(*got.ObstructionDetection.Direction)
+			sObstructionDetection.Direction = types.StringValue(*got.ObstructionDetection.Direction)
+		} else if sObstructionDetection.Direction.IsUnknown() {
+			sObstructionDetection.Direction = types.StringNull()
 		}
 		if got.ObstructionDetection.Action != nil {
-			m.ObstructionDetection.Action = types.StringValue(*got.ObstructionDetection.Action)
+			sObstructionDetection.Action = types.StringValue(*got.ObstructionDetection.Action)
+		} else if sObstructionDetection.Action.IsUnknown() {
+			sObstructionDetection.Action = types.StringNull()
 		}
 		if got.ObstructionDetection.PowerThr != nil {
-			m.ObstructionDetection.PowerThr = types.Float64Value(*got.ObstructionDetection.PowerThr)
+			sObstructionDetection.PowerThr = types.Float64Value(*got.ObstructionDetection.PowerThr)
+		} else if sObstructionDetection.PowerThr.IsUnknown() {
+			sObstructionDetection.PowerThr = types.Float64Null()
 		}
 		if got.ObstructionDetection.Holdoff != nil {
-			m.ObstructionDetection.Holdoff = types.Float64Value(*got.ObstructionDetection.Holdoff)
+			sObstructionDetection.Holdoff = types.Float64Value(*got.ObstructionDetection.Holdoff)
+		} else if sObstructionDetection.Holdoff.IsUnknown() {
+			sObstructionDetection.Holdoff = types.Float64Null()
 		}
+		oObstructionDetection, dObstructionDetection := types.ObjectValueFrom(ctx, coverConfigObstructionDetectionAttrTypes, sObstructionDetection)
+		diags.Append(dObstructionDetection...)
+		m.ObstructionDetection = oObstructionDetection
+	} else {
+		m.ObstructionDetection = types.ObjectNull(coverConfigObstructionDetectionAttrTypes)
 	}
 	if got.SafetySwitch != nil {
-		if m.SafetySwitch == nil {
-			m.SafetySwitch = &coverConfigSafetySwitchModel{}
+		var sSafetySwitch coverConfigSafetySwitchModel
+		if !m.SafetySwitch.IsNull() && !m.SafetySwitch.IsUnknown() {
+			diags.Append(m.SafetySwitch.As(ctx, &sSafetySwitch, basetypes.ObjectAsOptions{})...)
 		}
 		if got.SafetySwitch.Enable != nil {
-			m.SafetySwitch.Enable = types.BoolValue(*got.SafetySwitch.Enable)
+			sSafetySwitch.Enable = types.BoolValue(*got.SafetySwitch.Enable)
+		} else if sSafetySwitch.Enable.IsUnknown() {
+			sSafetySwitch.Enable = types.BoolNull()
 		}
 		if got.SafetySwitch.Direction != nil {
-			m.SafetySwitch.Direction = types.StringValue(*got.SafetySwitch.Direction)
+			sSafetySwitch.Direction = types.StringValue(*got.SafetySwitch.Direction)
+		} else if sSafetySwitch.Direction.IsUnknown() {
+			sSafetySwitch.Direction = types.StringNull()
 		}
 		if got.SafetySwitch.Action != nil {
-			m.SafetySwitch.Action = types.StringValue(*got.SafetySwitch.Action)
+			sSafetySwitch.Action = types.StringValue(*got.SafetySwitch.Action)
+		} else if sSafetySwitch.Action.IsUnknown() {
+			sSafetySwitch.Action = types.StringNull()
 		}
 		if got.SafetySwitch.AllowedMove != nil {
-			m.SafetySwitch.AllowedMove = types.StringValue(*got.SafetySwitch.AllowedMove)
+			sSafetySwitch.AllowedMove = types.StringValue(*got.SafetySwitch.AllowedMove)
+		} else if sSafetySwitch.AllowedMove.IsUnknown() {
+			sSafetySwitch.AllowedMove = types.StringNull()
 		}
+		oSafetySwitch, dSafetySwitch := types.ObjectValueFrom(ctx, coverConfigSafetySwitchAttrTypes, sSafetySwitch)
+		diags.Append(dSafetySwitch...)
+		m.SafetySwitch = oSafetySwitch
+	} else {
+		m.SafetySwitch = types.ObjectNull(coverConfigSafetySwitchAttrTypes)
 	}
 	if got.Slat != nil {
-		if m.Slat == nil {
-			m.Slat = &coverConfigSlatModel{}
+		var sSlat coverConfigSlatModel
+		if !m.Slat.IsNull() && !m.Slat.IsUnknown() {
+			diags.Append(m.Slat.As(ctx, &sSlat, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Slat.Enable != nil {
-			m.Slat.Enable = types.BoolValue(*got.Slat.Enable)
+			sSlat.Enable = types.BoolValue(*got.Slat.Enable)
+		} else if sSlat.Enable.IsUnknown() {
+			sSlat.Enable = types.BoolNull()
 		}
 		if got.Slat.OpenTime != nil {
-			m.Slat.OpenTime = types.Float64Value(*got.Slat.OpenTime)
+			sSlat.OpenTime = types.Float64Value(*got.Slat.OpenTime)
+		} else if sSlat.OpenTime.IsUnknown() {
+			sSlat.OpenTime = types.Float64Null()
 		}
 		if got.Slat.CloseTime != nil {
-			m.Slat.CloseTime = types.Float64Value(*got.Slat.CloseTime)
+			sSlat.CloseTime = types.Float64Value(*got.Slat.CloseTime)
+		} else if sSlat.CloseTime.IsUnknown() {
+			sSlat.CloseTime = types.Float64Null()
 		}
 		if got.Slat.Step != nil {
-			m.Slat.Step = types.Float64Value(*got.Slat.Step)
+			sSlat.Step = types.Float64Value(*got.Slat.Step)
+		} else if sSlat.Step.IsUnknown() {
+			sSlat.Step = types.Float64Null()
 		}
 		if got.Slat.RetainPos != nil {
-			m.Slat.RetainPos = types.BoolValue(*got.Slat.RetainPos)
+			sSlat.RetainPos = types.BoolValue(*got.Slat.RetainPos)
+		} else if sSlat.RetainPos.IsUnknown() {
+			sSlat.RetainPos = types.BoolNull()
 		}
 		if got.Slat.PreciseCtl != nil {
-			m.Slat.PreciseCtl = types.BoolValue(*got.Slat.PreciseCtl)
+			sSlat.PreciseCtl = types.BoolValue(*got.Slat.PreciseCtl)
+		} else if sSlat.PreciseCtl.IsUnknown() {
+			sSlat.PreciseCtl = types.BoolNull()
 		}
+		oSlat, dSlat := types.ObjectValueFrom(ctx, coverConfigSlatAttrTypes, sSlat)
+		diags.Append(dSlat...)
+		m.Slat = oSlat
+	} else {
+		m.Slat = types.ObjectNull(coverConfigSlatAttrTypes)
 	}
 	if got.SwapInputs != nil {
 		m.SwapInputs = types.BoolValue(*got.SwapInputs)
+	} else if m.SwapInputs.IsUnknown() {
+		m.SwapInputs = types.BoolNull()
 	}
 }
 
@@ -481,14 +596,16 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 		v := plan.CurrentLimit.ValueFloat64()
 		cfg.CurrentLimit = &v
 	}
-	if plan.Motor != nil {
+	if !plan.Motor.IsNull() && !plan.Motor.IsUnknown() {
+		var wMotor coverConfigMotorModel
+		diags.Append(plan.Motor.As(ctx, &wMotor, basetypes.ObjectAsOptions{})...)
 		cfg.Motor = &components.CoverConfigMotor{}
-		if !plan.Motor.IdlePowerThr.IsNull() && !plan.Motor.IdlePowerThr.IsUnknown() {
-			v := plan.Motor.IdlePowerThr.ValueFloat64()
+		if !wMotor.IdlePowerThr.IsNull() && !wMotor.IdlePowerThr.IsUnknown() {
+			v := wMotor.IdlePowerThr.ValueFloat64()
 			cfg.Motor.IdlePowerThr = &v
 		}
-		if !plan.Motor.IdleConfirmPeriod.IsNull() && !plan.Motor.IdleConfirmPeriod.IsUnknown() {
-			v := plan.Motor.IdleConfirmPeriod.ValueFloat64()
+		if !wMotor.IdleConfirmPeriod.IsNull() && !wMotor.IdleConfirmPeriod.IsUnknown() {
+			v := wMotor.IdleConfirmPeriod.ValueFloat64()
 			cfg.Motor.IdleConfirmPeriod = &v
 		}
 	}
@@ -508,72 +625,78 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 		v := plan.MaintenanceMode.ValueBool()
 		cfg.MaintenanceMode = &v
 	}
-	if plan.ObstructionDetection != nil {
+	if !plan.ObstructionDetection.IsNull() && !plan.ObstructionDetection.IsUnknown() {
+		var wObstructionDetection coverConfigObstructionDetectionModel
+		diags.Append(plan.ObstructionDetection.As(ctx, &wObstructionDetection, basetypes.ObjectAsOptions{})...)
 		cfg.ObstructionDetection = &components.CoverConfigObstructionDetection{}
-		if !plan.ObstructionDetection.Enable.IsNull() && !plan.ObstructionDetection.Enable.IsUnknown() {
-			v := plan.ObstructionDetection.Enable.ValueBool()
+		if !wObstructionDetection.Enable.IsNull() && !wObstructionDetection.Enable.IsUnknown() {
+			v := wObstructionDetection.Enable.ValueBool()
 			cfg.ObstructionDetection.Enable = &v
 		}
-		if !plan.ObstructionDetection.Direction.IsNull() && !plan.ObstructionDetection.Direction.IsUnknown() {
-			v := plan.ObstructionDetection.Direction.ValueString()
+		if !wObstructionDetection.Direction.IsNull() && !wObstructionDetection.Direction.IsUnknown() {
+			v := wObstructionDetection.Direction.ValueString()
 			cfg.ObstructionDetection.Direction = &v
 		}
-		if !plan.ObstructionDetection.Action.IsNull() && !plan.ObstructionDetection.Action.IsUnknown() {
-			v := plan.ObstructionDetection.Action.ValueString()
+		if !wObstructionDetection.Action.IsNull() && !wObstructionDetection.Action.IsUnknown() {
+			v := wObstructionDetection.Action.ValueString()
 			cfg.ObstructionDetection.Action = &v
 		}
-		if !plan.ObstructionDetection.PowerThr.IsNull() && !plan.ObstructionDetection.PowerThr.IsUnknown() {
-			v := plan.ObstructionDetection.PowerThr.ValueFloat64()
+		if !wObstructionDetection.PowerThr.IsNull() && !wObstructionDetection.PowerThr.IsUnknown() {
+			v := wObstructionDetection.PowerThr.ValueFloat64()
 			cfg.ObstructionDetection.PowerThr = &v
 		}
-		if !plan.ObstructionDetection.Holdoff.IsNull() && !plan.ObstructionDetection.Holdoff.IsUnknown() {
-			v := plan.ObstructionDetection.Holdoff.ValueFloat64()
+		if !wObstructionDetection.Holdoff.IsNull() && !wObstructionDetection.Holdoff.IsUnknown() {
+			v := wObstructionDetection.Holdoff.ValueFloat64()
 			cfg.ObstructionDetection.Holdoff = &v
 		}
 	}
-	if plan.SafetySwitch != nil {
+	if !plan.SafetySwitch.IsNull() && !plan.SafetySwitch.IsUnknown() {
+		var wSafetySwitch coverConfigSafetySwitchModel
+		diags.Append(plan.SafetySwitch.As(ctx, &wSafetySwitch, basetypes.ObjectAsOptions{})...)
 		cfg.SafetySwitch = &components.CoverConfigSafetySwitch{}
-		if !plan.SafetySwitch.Enable.IsNull() && !plan.SafetySwitch.Enable.IsUnknown() {
-			v := plan.SafetySwitch.Enable.ValueBool()
+		if !wSafetySwitch.Enable.IsNull() && !wSafetySwitch.Enable.IsUnknown() {
+			v := wSafetySwitch.Enable.ValueBool()
 			cfg.SafetySwitch.Enable = &v
 		}
-		if !plan.SafetySwitch.Direction.IsNull() && !plan.SafetySwitch.Direction.IsUnknown() {
-			v := plan.SafetySwitch.Direction.ValueString()
+		if !wSafetySwitch.Direction.IsNull() && !wSafetySwitch.Direction.IsUnknown() {
+			v := wSafetySwitch.Direction.ValueString()
 			cfg.SafetySwitch.Direction = &v
 		}
-		if !plan.SafetySwitch.Action.IsNull() && !plan.SafetySwitch.Action.IsUnknown() {
-			v := plan.SafetySwitch.Action.ValueString()
+		if !wSafetySwitch.Action.IsNull() && !wSafetySwitch.Action.IsUnknown() {
+			v := wSafetySwitch.Action.ValueString()
 			cfg.SafetySwitch.Action = &v
 		}
-		if !plan.SafetySwitch.AllowedMove.IsNull() && !plan.SafetySwitch.AllowedMove.IsUnknown() {
-			v := plan.SafetySwitch.AllowedMove.ValueString()
+		if !wSafetySwitch.AllowedMove.IsNull() && !wSafetySwitch.AllowedMove.IsUnknown() {
+			v := wSafetySwitch.AllowedMove.ValueString()
 			cfg.SafetySwitch.AllowedMove = &v
 		}
 	}
-	if plan.Slat != nil {
+	if !plan.Slat.IsNull() && !plan.Slat.IsUnknown() {
+		var wSlat coverConfigSlatModel
+		diags.Append(plan.Slat.As(ctx, &wSlat, basetypes.ObjectAsOptions{})...)
 		cfg.Slat = &components.CoverConfigSlat{}
-		if !plan.Slat.Enable.IsNull() && !plan.Slat.Enable.IsUnknown() {
-			v := plan.Slat.Enable.ValueBool()
+		if !wSlat.Enable.IsNull() && !wSlat.Enable.IsUnknown() {
+			v := wSlat.Enable.ValueBool()
 			cfg.Slat.Enable = &v
 		}
-		if !plan.Slat.OpenTime.IsNull() && !plan.Slat.OpenTime.IsUnknown() {
-			v := plan.Slat.OpenTime.ValueFloat64()
+		if !wSlat.OpenTime.IsNull() && !wSlat.OpenTime.IsUnknown() {
+			v := wSlat.OpenTime.ValueFloat64()
 			cfg.Slat.OpenTime = &v
 		}
-		if !plan.Slat.CloseTime.IsNull() && !plan.Slat.CloseTime.IsUnknown() {
-			v := plan.Slat.CloseTime.ValueFloat64()
+		if !wSlat.CloseTime.IsNull() && !wSlat.CloseTime.IsUnknown() {
+			v := wSlat.CloseTime.ValueFloat64()
 			cfg.Slat.CloseTime = &v
 		}
-		if !plan.Slat.Step.IsNull() && !plan.Slat.Step.IsUnknown() {
-			v := plan.Slat.Step.ValueFloat64()
+		if !wSlat.Step.IsNull() && !wSlat.Step.IsUnknown() {
+			v := wSlat.Step.ValueFloat64()
 			cfg.Slat.Step = &v
 		}
-		if !plan.Slat.RetainPos.IsNull() && !plan.Slat.RetainPos.IsUnknown() {
-			v := plan.Slat.RetainPos.ValueBool()
+		if !wSlat.RetainPos.IsNull() && !wSlat.RetainPos.IsUnknown() {
+			v := wSlat.RetainPos.ValueBool()
 			cfg.Slat.RetainPos = &v
 		}
-		if !plan.Slat.PreciseCtl.IsNull() && !plan.Slat.PreciseCtl.IsUnknown() {
-			v := plan.Slat.PreciseCtl.ValueBool()
+		if !wSlat.PreciseCtl.IsNull() && !wSlat.PreciseCtl.IsUnknown() {
+			v := wSlat.PreciseCtl.ValueBool()
 			cfg.Slat.PreciseCtl = &v
 		}
 	}
