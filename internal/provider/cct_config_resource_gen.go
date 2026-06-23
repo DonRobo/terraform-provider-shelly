@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -153,6 +154,7 @@ func (r *cctConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Controls how quickly the output level changes while a button is held down for dimming (if applicable). Default value 3. Range [1,5] where 5 is fastest, 1 is slowest",
+				Validators:          []validator.Float64{float64validator.Between(1, 5)},
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
 			"button_presets": schema.SingleNestedAttribute{

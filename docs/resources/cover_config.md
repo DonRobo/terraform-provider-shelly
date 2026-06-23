@@ -36,7 +36,7 @@ description: |-
 - `power_limit` (Number) Watts, a limit that must be exceeded to trigger an overpower error
 - `safety_switch` (Attributes) (see [below for nested schema](#nestedatt--safety_switch))
 - `slat` (Attributes) (see [below for nested schema](#nestedatt--slat))
-- `swap_inputs` (Boolean) Defines whether the functions of the two inputs are swapped. Only present if there are two inputs associated with the Cover instance. Documented without a type by Shelly.
+- `swap_inputs` (Boolean) Defines whether the functions of the two inputs are swapped. Only present if there are two inputs associated with the Cover instance.
 - `undervoltage_limit` (Number) Volts, a limit that must be subceeded to trigger an undervoltage error
 - `voltage_limit` (Number) Volts, a limit that must be exceeded to trigger an overvoltage error
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -270,18 +271,21 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "Time it takes for slats to move from fully closed (0%) to fully open (100%) position, seconds. Must be manually configured by the user. Accepted range: [0.5..30]s",
+						Validators:          []validator.Float64{float64validator.Between(0.5, 30)},
 						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 					},
 					"close_time": schema.Float64Attribute{
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "Time it takes for slats to move from fully open (100%) to fully closed (100%) position, seconds. Must be manually configured by the user. Accepted range: [0.5..30]s",
+						Validators:          []validator.Float64{float64validator.Between(0.5, 30)},
 						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 					},
 					"step": schema.Float64Attribute{
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "Single step movement spread, represented as % from the full range (used only when slats are controlled via inputs). Accepted range: [1..100]%",
+						Validators:          []validator.Float64{float64validator.Between(1, 100)},
 						PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 					},
 					"retain_pos": schema.BoolAttribute{
@@ -301,7 +305,7 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"swap_inputs": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Defines whether the functions of the two inputs are swapped. Only present if there are two inputs associated with the Cover instance. Documented without a type by Shelly.",
+				MarkdownDescription: "Defines whether the functions of the two inputs are swapped. Only present if there are two inputs associated with the Cover instance.",
 				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 		},

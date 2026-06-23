@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"resty.dev/v3"
 	"strconv"
@@ -106,6 +108,7 @@ func (r *inputConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "(only for type analog) Analog input report threshold in percent. The accepted range is device-specific, default [1.0..50.0]% unless specified otherwise",
+				Validators:          []validator.Float64{float64validator.Between(1, 50)},
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
 			"range": schema.Float64Attribute{
@@ -137,18 +140,21 @@ func (r *inputConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "(only for type count) Counts report threshold in number of pulses. Accepted range [1 - 2147483647]",
+				Validators:          []validator.Float64{float64validator.Between(1, 2147483647)},
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
 			"freq_window": schema.Float64Attribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "(only for type count) Reference time in seconds for base of frequency measurement. Accepted range [1 - 3600]",
+				Validators:          []validator.Float64{float64validator.Between(1, 3600)},
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
 			"freq_rep_thr": schema.Float64Attribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "(only for type count) Frequency report threshold in percent. Accepted range [0 - 10000]",
+				Validators:          []validator.Float64{float64validator.Between(0, 10000)},
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
 			"xcounts": schema.SingleNestedAttribute{
