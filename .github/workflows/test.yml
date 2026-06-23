@@ -8,6 +8,10 @@ on:
     paths-ignore:
       - 'README.md'
   push:
+    # Only run on pushes to main; branch pushes are already covered by the
+    # pull_request trigger, so scoping this avoids duplicate runs per PR.
+    branches:
+      - main
     paths-ignore:
       - 'README.md'
 
