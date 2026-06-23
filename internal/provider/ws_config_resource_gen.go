@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"resty.dev/v3"
 )
@@ -29,6 +31,7 @@ type wsConfigResourceModel struct {
 	IP     types.String `tfsdk:"ip"`
 	Enable types.Bool   `tfsdk:"enable"`
 	Server types.String `tfsdk:"server"`
+	SSLCA  types.String `tfsdk:"ssl_ca"`
 }
 
 func (r *wsConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -51,6 +54,13 @@ func (r *wsConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				MarkdownDescription: "Name of the server to which the device is connected. When prefixed with wss:// a TLS socket will be used",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"ssl_ca": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Type of the TCP sockets",
+				Validators:          []validator.String{stringvalidator.OneOf("*", "user_ca.pem", "ca.pem")},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
@@ -69,6 +79,9 @@ func (r *wsConfigResource) get(ctx context.Context, m *wsConfigResourceModel, di
 	}
 	if got.Server != nil {
 		m.Server = types.StringValue(*got.Server)
+	}
+	if got.SSLCA != nil {
+		m.SSLCA = types.StringValue(*got.SSLCA)
 	}
 }
 
@@ -94,6 +107,10 @@ func (r *wsConfigResource) apply(ctx context.Context, plan wsConfigResourceModel
 	if !plan.Server.IsNull() && !plan.Server.IsUnknown() {
 		v := plan.Server.ValueString()
 		cfg.Server = &v
+	}
+	if !plan.SSLCA.IsNull() && !plan.SSLCA.IsUnknown() {
+		v := plan.SSLCA.ValueString()
+		cfg.SSLCA = &v
 	}
 	client := resty.New()
 	defer client.Close()

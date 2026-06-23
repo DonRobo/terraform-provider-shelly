@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"resty.dev/v3"
 )
@@ -29,7 +31,10 @@ type mqttConfigResourceModel struct {
 	IP            types.String `tfsdk:"ip"`
 	Enable        types.Bool   `tfsdk:"enable"`
 	Server        types.String `tfsdk:"server"`
+	ClientID      types.String `tfsdk:"client_id"`
 	User          types.String `tfsdk:"user"`
+	SSLCA         types.String `tfsdk:"ssl_ca"`
+	TopicPrefix   types.String `tfsdk:"topic_prefix"`
 	RPCNtf        types.Bool   `tfsdk:"rpc_ntf"`
 	StatusNtf     types.Bool   `tfsdk:"status_ntf"`
 	UseClientCert types.Bool   `tfsdk:"use_client_cert"`
@@ -56,10 +61,29 @@ func (r *mqttConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				MarkdownDescription: "Host name of the MQTT server. Can be followed by port number - host:port",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"client_id": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Identifies each MQTT client that connects to an MQTT brokers",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 			"user": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Username",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"ssl_ca": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Type of the TCP sockets",
+				Validators:          []validator.String{stringvalidator.OneOf("*", "user_ca.pem", "ca.pem")},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"topic_prefix": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Prefix of the topics on which device publish/subscribe. Limited to 300 characters. Could not start with $ and #, +, %, ? are not allowed.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"rpc_ntf": schema.BoolAttribute{
@@ -105,8 +129,17 @@ func (r *mqttConfigResource) get(ctx context.Context, m *mqttConfigResourceModel
 	if got.Server != nil {
 		m.Server = types.StringValue(*got.Server)
 	}
+	if got.ClientID != nil {
+		m.ClientID = types.StringValue(*got.ClientID)
+	}
 	if got.User != nil {
 		m.User = types.StringValue(*got.User)
+	}
+	if got.SSLCA != nil {
+		m.SSLCA = types.StringValue(*got.SSLCA)
+	}
+	if got.TopicPrefix != nil {
+		m.TopicPrefix = types.StringValue(*got.TopicPrefix)
 	}
 	if got.RPCNtf != nil {
 		m.RPCNtf = types.BoolValue(*got.RPCNtf)
@@ -145,9 +178,21 @@ func (r *mqttConfigResource) apply(ctx context.Context, plan mqttConfigResourceM
 		v := plan.Server.ValueString()
 		cfg.Server = &v
 	}
+	if !plan.ClientID.IsNull() && !plan.ClientID.IsUnknown() {
+		v := plan.ClientID.ValueString()
+		cfg.ClientID = &v
+	}
 	if !plan.User.IsNull() && !plan.User.IsUnknown() {
 		v := plan.User.ValueString()
 		cfg.User = &v
+	}
+	if !plan.SSLCA.IsNull() && !plan.SSLCA.IsUnknown() {
+		v := plan.SSLCA.ValueString()
+		cfg.SSLCA = &v
+	}
+	if !plan.TopicPrefix.IsNull() && !plan.TopicPrefix.IsUnknown() {
+		v := plan.TopicPrefix.ValueString()
+		cfg.TopicPrefix = &v
 	}
 	if !plan.RPCNtf.IsNull() && !plan.RPCNtf.IsUnknown() {
 		v := plan.RPCNtf.ValueBool()
