@@ -58,6 +58,8 @@ func (r *modbusConfigResource) get(ctx context.Context, m *modbusConfigResourceM
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 }
 

@@ -79,14 +79,20 @@ func (r *em1dataConfigResource) get(ctx context.Context, m *em1dataConfigResourc
 	}
 	if got.TotalActEnergy != nil {
 		m.TotalActEnergy = types.Float64Value(*got.TotalActEnergy)
+	} else if m.TotalActEnergy.IsUnknown() {
+		m.TotalActEnergy = types.Float64Null()
 	}
 	if got.TotalActRetEnergy != nil {
 		m.TotalActRetEnergy = types.Float64Value(*got.TotalActRetEnergy)
+	} else if m.TotalActRetEnergy.IsUnknown() {
+		m.TotalActRetEnergy = types.Float64Null()
 	}
 	if got.Errors != nil {
 		l, d := types.ListValueFrom(ctx, types.StringType, got.Errors)
 		diags.Append(d...)
 		m.Errors = l
+	} else if m.Errors.IsUnknown() {
+		m.Errors = types.ListNull(types.StringType)
 	}
 }
 

@@ -71,9 +71,13 @@ func (r *scriptConfigResource) get(ctx context.Context, m *scriptConfigResourceM
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 }
 

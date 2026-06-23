@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -35,12 +37,17 @@ type voltmeterConfigXvoltageModel struct {
 }
 
 type voltmeterConfigResourceModel struct {
-	IP        types.String                  `tfsdk:"ip"`
-	ID        types.Int64                   `tfsdk:"id"`
-	Name      types.String                  `tfsdk:"name"`
-	ReportThr types.Float64                 `tfsdk:"report_thr"`
-	Range     types.Float64                 `tfsdk:"range"`
-	Xvoltage  *voltmeterConfigXvoltageModel `tfsdk:"xvoltage"`
+	IP        types.String  `tfsdk:"ip"`
+	ID        types.Int64   `tfsdk:"id"`
+	Name      types.String  `tfsdk:"name"`
+	ReportThr types.Float64 `tfsdk:"report_thr"`
+	Range     types.Float64 `tfsdk:"range"`
+	Xvoltage  types.Object  `tfsdk:"xvoltage"`
+}
+
+var voltmeterConfigXvoltageAttrTypes = map[string]attr.Type{
+	"expr": types.StringType,
+	"unit": types.StringType,
 }
 
 func (r *voltmeterConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -104,23 +111,39 @@ func (r *voltmeterConfigResource) get(ctx context.Context, m *voltmeterConfigRes
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.ReportThr != nil {
 		m.ReportThr = types.Float64Value(*got.ReportThr)
+	} else if m.ReportThr.IsUnknown() {
+		m.ReportThr = types.Float64Null()
 	}
 	if got.Range != nil {
 		m.Range = types.Float64Value(*got.Range)
+	} else if m.Range.IsUnknown() {
+		m.Range = types.Float64Null()
 	}
 	if got.Xvoltage != nil {
-		if m.Xvoltage == nil {
-			m.Xvoltage = &voltmeterConfigXvoltageModel{}
+		var sXvoltage voltmeterConfigXvoltageModel
+		if !m.Xvoltage.IsNull() && !m.Xvoltage.IsUnknown() {
+			diags.Append(m.Xvoltage.As(ctx, &sXvoltage, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Xvoltage.Expr != nil {
-			m.Xvoltage.Expr = types.StringValue(*got.Xvoltage.Expr)
+			sXvoltage.Expr = types.StringValue(*got.Xvoltage.Expr)
+		} else if sXvoltage.Expr.IsUnknown() {
+			sXvoltage.Expr = types.StringNull()
 		}
 		if got.Xvoltage.Unit != nil {
-			m.Xvoltage.Unit = types.StringValue(*got.Xvoltage.Unit)
+			sXvoltage.Unit = types.StringValue(*got.Xvoltage.Unit)
+		} else if sXvoltage.Unit.IsUnknown() {
+			sXvoltage.Unit = types.StringNull()
 		}
+		oXvoltage, dXvoltage := types.ObjectValueFrom(ctx, voltmeterConfigXvoltageAttrTypes, sXvoltage)
+		diags.Append(dXvoltage...)
+		m.Xvoltage = oXvoltage
+	} else {
+		m.Xvoltage = types.ObjectNull(voltmeterConfigXvoltageAttrTypes)
 	}
 }
 
@@ -152,14 +175,16 @@ func (r *voltmeterConfigResource) apply(ctx context.Context, plan voltmeterConfi
 		v := plan.Range.ValueFloat64()
 		cfg.Range = &v
 	}
-	if plan.Xvoltage != nil {
+	if !plan.Xvoltage.IsNull() && !plan.Xvoltage.IsUnknown() {
+		var wXvoltage voltmeterConfigXvoltageModel
+		diags.Append(plan.Xvoltage.As(ctx, &wXvoltage, basetypes.ObjectAsOptions{})...)
 		cfg.Xvoltage = &components.VoltmeterConfigXvoltage{}
-		if !plan.Xvoltage.Expr.IsNull() && !plan.Xvoltage.Expr.IsUnknown() {
-			v := plan.Xvoltage.Expr.ValueString()
+		if !wXvoltage.Expr.IsNull() && !wXvoltage.Expr.IsUnknown() {
+			v := wXvoltage.Expr.ValueString()
 			cfg.Xvoltage.Expr = &v
 		}
-		if !plan.Xvoltage.Unit.IsNull() && !plan.Xvoltage.Unit.IsUnknown() {
-			v := plan.Xvoltage.Unit.ValueString()
+		if !wXvoltage.Unit.IsNull() && !wXvoltage.Unit.IsUnknown() {
+			v := wXvoltage.Unit.ValueString()
 			cfg.Xvoltage.Unit = &v
 		}
 	}

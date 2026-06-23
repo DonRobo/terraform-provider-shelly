@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 )
 
@@ -34,11 +36,11 @@ type wifiConfigAPRangeExtenderModel struct {
 }
 
 type wifiConfigAPModel struct {
-	SSID          types.String                    `tfsdk:"ssid"`
-	Pass          types.String                    `tfsdk:"pass"`
-	IsOpen        types.Bool                      `tfsdk:"is_open"`
-	Enable        types.Bool                      `tfsdk:"enable"`
-	RangeExtender *wifiConfigAPRangeExtenderModel `tfsdk:"range_extender"`
+	SSID          types.String `tfsdk:"ssid"`
+	Pass          types.String `tfsdk:"pass"`
+	IsOpen        types.Bool   `tfsdk:"is_open"`
+	Enable        types.Bool   `tfsdk:"enable"`
+	RangeExtender types.Object `tfsdk:"range_extender"`
 }
 
 type wifiConfigStaModel struct {
@@ -59,10 +61,39 @@ type wifiConfigRoamModel struct {
 }
 
 type wifiConfigResourceModel struct {
-	IP   types.String         `tfsdk:"ip"`
-	AP   *wifiConfigAPModel   `tfsdk:"ap"`
-	Sta  *wifiConfigStaModel  `tfsdk:"sta"`
-	Roam *wifiConfigRoamModel `tfsdk:"roam"`
+	IP   types.String `tfsdk:"ip"`
+	AP   types.Object `tfsdk:"ap"`
+	Sta  types.Object `tfsdk:"sta"`
+	Roam types.Object `tfsdk:"roam"`
+}
+
+var wifiConfigAPRangeExtenderAttrTypes = map[string]attr.Type{
+	"enable": types.BoolType,
+}
+
+var wifiConfigAPAttrTypes = map[string]attr.Type{
+	"ssid":           types.StringType,
+	"pass":           types.StringType,
+	"is_open":        types.BoolType,
+	"enable":         types.BoolType,
+	"range_extender": types.ObjectType{AttrTypes: wifiConfigAPRangeExtenderAttrTypes},
+}
+
+var wifiConfigStaAttrTypes = map[string]attr.Type{
+	"ssid":       types.StringType,
+	"pass":       types.StringType,
+	"is_open":    types.BoolType,
+	"enable":     types.BoolType,
+	"ipv4mode":   types.StringType,
+	"ip":         types.StringType,
+	"netmask":    types.StringType,
+	"gw":         types.StringType,
+	"nameserver": types.StringType,
+}
+
+var wifiConfigRoamAttrTypes = map[string]attr.Type{
+	"rssi_thr": types.Float64Type,
+	"interval": types.Float64Type,
 }
 
 func (r *wifiConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -212,72 +243,128 @@ func (r *wifiConfigResource) get(ctx context.Context, m *wifiConfigResourceModel
 		return
 	}
 	if got.AP != nil {
-		if m.AP == nil {
-			m.AP = &wifiConfigAPModel{}
+		var sAP wifiConfigAPModel
+		if !m.AP.IsNull() && !m.AP.IsUnknown() {
+			diags.Append(m.AP.As(ctx, &sAP, basetypes.ObjectAsOptions{})...)
 		}
 		if got.AP.SSID != nil {
-			m.AP.SSID = types.StringValue(*got.AP.SSID)
+			sAP.SSID = types.StringValue(*got.AP.SSID)
+		} else if sAP.SSID.IsUnknown() {
+			sAP.SSID = types.StringNull()
 		}
 		if got.AP.Pass != nil {
-			m.AP.Pass = types.StringValue(*got.AP.Pass)
+			sAP.Pass = types.StringValue(*got.AP.Pass)
+		} else if sAP.Pass.IsUnknown() {
+			sAP.Pass = types.StringNull()
 		}
 		if got.AP.IsOpen != nil {
-			m.AP.IsOpen = types.BoolValue(*got.AP.IsOpen)
+			sAP.IsOpen = types.BoolValue(*got.AP.IsOpen)
+		} else if sAP.IsOpen.IsUnknown() {
+			sAP.IsOpen = types.BoolNull()
 		}
 		if got.AP.Enable != nil {
-			m.AP.Enable = types.BoolValue(*got.AP.Enable)
+			sAP.Enable = types.BoolValue(*got.AP.Enable)
+		} else if sAP.Enable.IsUnknown() {
+			sAP.Enable = types.BoolNull()
 		}
 		if got.AP.RangeExtender != nil {
-			if m.AP.RangeExtender == nil {
-				m.AP.RangeExtender = &wifiConfigAPRangeExtenderModel{}
+			var sAPRangeExtender wifiConfigAPRangeExtenderModel
+			if !sAP.RangeExtender.IsNull() && !sAP.RangeExtender.IsUnknown() {
+				diags.Append(sAP.RangeExtender.As(ctx, &sAPRangeExtender, basetypes.ObjectAsOptions{})...)
 			}
 			if got.AP.RangeExtender.Enable != nil {
-				m.AP.RangeExtender.Enable = types.BoolValue(*got.AP.RangeExtender.Enable)
+				sAPRangeExtender.Enable = types.BoolValue(*got.AP.RangeExtender.Enable)
+			} else if sAPRangeExtender.Enable.IsUnknown() {
+				sAPRangeExtender.Enable = types.BoolNull()
 			}
+			oAPRangeExtender, dAPRangeExtender := types.ObjectValueFrom(ctx, wifiConfigAPRangeExtenderAttrTypes, sAPRangeExtender)
+			diags.Append(dAPRangeExtender...)
+			sAP.RangeExtender = oAPRangeExtender
+		} else {
+			sAP.RangeExtender = types.ObjectNull(wifiConfigAPRangeExtenderAttrTypes)
 		}
+		oAP, dAP := types.ObjectValueFrom(ctx, wifiConfigAPAttrTypes, sAP)
+		diags.Append(dAP...)
+		m.AP = oAP
+	} else {
+		m.AP = types.ObjectNull(wifiConfigAPAttrTypes)
 	}
 	if got.Sta != nil {
-		if m.Sta == nil {
-			m.Sta = &wifiConfigStaModel{}
+		var sSta wifiConfigStaModel
+		if !m.Sta.IsNull() && !m.Sta.IsUnknown() {
+			diags.Append(m.Sta.As(ctx, &sSta, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Sta.SSID != nil {
-			m.Sta.SSID = types.StringValue(*got.Sta.SSID)
+			sSta.SSID = types.StringValue(*got.Sta.SSID)
+		} else if sSta.SSID.IsUnknown() {
+			sSta.SSID = types.StringNull()
 		}
 		if got.Sta.Pass != nil {
-			m.Sta.Pass = types.StringValue(*got.Sta.Pass)
+			sSta.Pass = types.StringValue(*got.Sta.Pass)
+		} else if sSta.Pass.IsUnknown() {
+			sSta.Pass = types.StringNull()
 		}
 		if got.Sta.IsOpen != nil {
-			m.Sta.IsOpen = types.BoolValue(*got.Sta.IsOpen)
+			sSta.IsOpen = types.BoolValue(*got.Sta.IsOpen)
+		} else if sSta.IsOpen.IsUnknown() {
+			sSta.IsOpen = types.BoolNull()
 		}
 		if got.Sta.Enable != nil {
-			m.Sta.Enable = types.BoolValue(*got.Sta.Enable)
+			sSta.Enable = types.BoolValue(*got.Sta.Enable)
+		} else if sSta.Enable.IsUnknown() {
+			sSta.Enable = types.BoolNull()
 		}
 		if got.Sta.Ipv4mode != nil {
-			m.Sta.Ipv4mode = types.StringValue(*got.Sta.Ipv4mode)
+			sSta.Ipv4mode = types.StringValue(*got.Sta.Ipv4mode)
+		} else if sSta.Ipv4mode.IsUnknown() {
+			sSta.Ipv4mode = types.StringNull()
 		}
 		if got.Sta.IP != nil {
-			m.Sta.IP = types.StringValue(*got.Sta.IP)
+			sSta.IP = types.StringValue(*got.Sta.IP)
+		} else if sSta.IP.IsUnknown() {
+			sSta.IP = types.StringNull()
 		}
 		if got.Sta.Netmask != nil {
-			m.Sta.Netmask = types.StringValue(*got.Sta.Netmask)
+			sSta.Netmask = types.StringValue(*got.Sta.Netmask)
+		} else if sSta.Netmask.IsUnknown() {
+			sSta.Netmask = types.StringNull()
 		}
 		if got.Sta.Gw != nil {
-			m.Sta.Gw = types.StringValue(*got.Sta.Gw)
+			sSta.Gw = types.StringValue(*got.Sta.Gw)
+		} else if sSta.Gw.IsUnknown() {
+			sSta.Gw = types.StringNull()
 		}
 		if got.Sta.Nameserver != nil {
-			m.Sta.Nameserver = types.StringValue(*got.Sta.Nameserver)
+			sSta.Nameserver = types.StringValue(*got.Sta.Nameserver)
+		} else if sSta.Nameserver.IsUnknown() {
+			sSta.Nameserver = types.StringNull()
 		}
+		oSta, dSta := types.ObjectValueFrom(ctx, wifiConfigStaAttrTypes, sSta)
+		diags.Append(dSta...)
+		m.Sta = oSta
+	} else {
+		m.Sta = types.ObjectNull(wifiConfigStaAttrTypes)
 	}
 	if got.Roam != nil {
-		if m.Roam == nil {
-			m.Roam = &wifiConfigRoamModel{}
+		var sRoam wifiConfigRoamModel
+		if !m.Roam.IsNull() && !m.Roam.IsUnknown() {
+			diags.Append(m.Roam.As(ctx, &sRoam, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Roam.RssiThr != nil {
-			m.Roam.RssiThr = types.Float64Value(*got.Roam.RssiThr)
+			sRoam.RssiThr = types.Float64Value(*got.Roam.RssiThr)
+		} else if sRoam.RssiThr.IsUnknown() {
+			sRoam.RssiThr = types.Float64Null()
 		}
 		if got.Roam.Interval != nil {
-			m.Roam.Interval = types.Float64Value(*got.Roam.Interval)
+			sRoam.Interval = types.Float64Value(*got.Roam.Interval)
+		} else if sRoam.Interval.IsUnknown() {
+			sRoam.Interval = types.Float64Null()
 		}
+		oRoam, dRoam := types.ObjectValueFrom(ctx, wifiConfigRoamAttrTypes, sRoam)
+		diags.Append(dRoam...)
+		m.Roam = oRoam
+	} else {
+		m.Roam = types.ObjectNull(wifiConfigRoamAttrTypes)
 	}
 }
 
@@ -296,79 +383,87 @@ func (r *wifiConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 
 func (r *wifiConfigResource) apply(ctx context.Context, plan wifiConfigResourceModel, diags *diag.Diagnostics) {
 	var cfg components.WifiConfig
-	if plan.AP != nil {
+	if !plan.AP.IsNull() && !plan.AP.IsUnknown() {
+		var wAP wifiConfigAPModel
+		diags.Append(plan.AP.As(ctx, &wAP, basetypes.ObjectAsOptions{})...)
 		cfg.AP = &components.WifiConfigAP{}
-		if !plan.AP.SSID.IsNull() && !plan.AP.SSID.IsUnknown() {
-			v := plan.AP.SSID.ValueString()
+		if !wAP.SSID.IsNull() && !wAP.SSID.IsUnknown() {
+			v := wAP.SSID.ValueString()
 			cfg.AP.SSID = &v
 		}
-		if !plan.AP.Pass.IsNull() && !plan.AP.Pass.IsUnknown() {
-			v := plan.AP.Pass.ValueString()
+		if !wAP.Pass.IsNull() && !wAP.Pass.IsUnknown() {
+			v := wAP.Pass.ValueString()
 			cfg.AP.Pass = &v
 		}
-		if !plan.AP.IsOpen.IsNull() && !plan.AP.IsOpen.IsUnknown() {
-			v := plan.AP.IsOpen.ValueBool()
+		if !wAP.IsOpen.IsNull() && !wAP.IsOpen.IsUnknown() {
+			v := wAP.IsOpen.ValueBool()
 			cfg.AP.IsOpen = &v
 		}
-		if !plan.AP.Enable.IsNull() && !plan.AP.Enable.IsUnknown() {
-			v := plan.AP.Enable.ValueBool()
+		if !wAP.Enable.IsNull() && !wAP.Enable.IsUnknown() {
+			v := wAP.Enable.ValueBool()
 			cfg.AP.Enable = &v
 		}
-		if plan.AP.RangeExtender != nil {
+		if !wAP.RangeExtender.IsNull() && !wAP.RangeExtender.IsUnknown() {
+			var wAPRangeExtender wifiConfigAPRangeExtenderModel
+			diags.Append(wAP.RangeExtender.As(ctx, &wAPRangeExtender, basetypes.ObjectAsOptions{})...)
 			cfg.AP.RangeExtender = &components.WifiConfigAPRangeExtender{}
-			if !plan.AP.RangeExtender.Enable.IsNull() && !plan.AP.RangeExtender.Enable.IsUnknown() {
-				v := plan.AP.RangeExtender.Enable.ValueBool()
+			if !wAPRangeExtender.Enable.IsNull() && !wAPRangeExtender.Enable.IsUnknown() {
+				v := wAPRangeExtender.Enable.ValueBool()
 				cfg.AP.RangeExtender.Enable = &v
 			}
 		}
 	}
-	if plan.Sta != nil {
+	if !plan.Sta.IsNull() && !plan.Sta.IsUnknown() {
+		var wSta wifiConfigStaModel
+		diags.Append(plan.Sta.As(ctx, &wSta, basetypes.ObjectAsOptions{})...)
 		cfg.Sta = &components.WifiConfigSta{}
-		if !plan.Sta.SSID.IsNull() && !plan.Sta.SSID.IsUnknown() {
-			v := plan.Sta.SSID.ValueString()
+		if !wSta.SSID.IsNull() && !wSta.SSID.IsUnknown() {
+			v := wSta.SSID.ValueString()
 			cfg.Sta.SSID = &v
 		}
-		if !plan.Sta.Pass.IsNull() && !plan.Sta.Pass.IsUnknown() {
-			v := plan.Sta.Pass.ValueString()
+		if !wSta.Pass.IsNull() && !wSta.Pass.IsUnknown() {
+			v := wSta.Pass.ValueString()
 			cfg.Sta.Pass = &v
 		}
-		if !plan.Sta.IsOpen.IsNull() && !plan.Sta.IsOpen.IsUnknown() {
-			v := plan.Sta.IsOpen.ValueBool()
+		if !wSta.IsOpen.IsNull() && !wSta.IsOpen.IsUnknown() {
+			v := wSta.IsOpen.ValueBool()
 			cfg.Sta.IsOpen = &v
 		}
-		if !plan.Sta.Enable.IsNull() && !plan.Sta.Enable.IsUnknown() {
-			v := plan.Sta.Enable.ValueBool()
+		if !wSta.Enable.IsNull() && !wSta.Enable.IsUnknown() {
+			v := wSta.Enable.ValueBool()
 			cfg.Sta.Enable = &v
 		}
-		if !plan.Sta.Ipv4mode.IsNull() && !plan.Sta.Ipv4mode.IsUnknown() {
-			v := plan.Sta.Ipv4mode.ValueString()
+		if !wSta.Ipv4mode.IsNull() && !wSta.Ipv4mode.IsUnknown() {
+			v := wSta.Ipv4mode.ValueString()
 			cfg.Sta.Ipv4mode = &v
 		}
-		if !plan.Sta.IP.IsNull() && !plan.Sta.IP.IsUnknown() {
-			v := plan.Sta.IP.ValueString()
+		if !wSta.IP.IsNull() && !wSta.IP.IsUnknown() {
+			v := wSta.IP.ValueString()
 			cfg.Sta.IP = &v
 		}
-		if !plan.Sta.Netmask.IsNull() && !plan.Sta.Netmask.IsUnknown() {
-			v := plan.Sta.Netmask.ValueString()
+		if !wSta.Netmask.IsNull() && !wSta.Netmask.IsUnknown() {
+			v := wSta.Netmask.ValueString()
 			cfg.Sta.Netmask = &v
 		}
-		if !plan.Sta.Gw.IsNull() && !plan.Sta.Gw.IsUnknown() {
-			v := plan.Sta.Gw.ValueString()
+		if !wSta.Gw.IsNull() && !wSta.Gw.IsUnknown() {
+			v := wSta.Gw.ValueString()
 			cfg.Sta.Gw = &v
 		}
-		if !plan.Sta.Nameserver.IsNull() && !plan.Sta.Nameserver.IsUnknown() {
-			v := plan.Sta.Nameserver.ValueString()
+		if !wSta.Nameserver.IsNull() && !wSta.Nameserver.IsUnknown() {
+			v := wSta.Nameserver.ValueString()
 			cfg.Sta.Nameserver = &v
 		}
 	}
-	if plan.Roam != nil {
+	if !plan.Roam.IsNull() && !plan.Roam.IsUnknown() {
+		var wRoam wifiConfigRoamModel
+		diags.Append(plan.Roam.As(ctx, &wRoam, basetypes.ObjectAsOptions{})...)
 		cfg.Roam = &components.WifiConfigRoam{}
-		if !plan.Roam.RssiThr.IsNull() && !plan.Roam.RssiThr.IsUnknown() {
-			v := plan.Roam.RssiThr.ValueFloat64()
+		if !wRoam.RssiThr.IsNull() && !wRoam.RssiThr.IsUnknown() {
+			v := wRoam.RssiThr.ValueFloat64()
 			cfg.Roam.RssiThr = &v
 		}
-		if !plan.Roam.Interval.IsNull() && !plan.Roam.Interval.IsUnknown() {
-			v := plan.Roam.Interval.ValueFloat64()
+		if !wRoam.Interval.IsNull() && !wRoam.Interval.IsUnknown() {
+			v := wRoam.Interval.ValueFloat64()
 			cfg.Roam.Interval = &v
 		}
 	}

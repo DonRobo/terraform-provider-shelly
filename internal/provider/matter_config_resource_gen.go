@@ -58,6 +58,8 @@ func (r *matterConfigResource) get(ctx context.Context, m *matterConfigResourceM
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 }
 

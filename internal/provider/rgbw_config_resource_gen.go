@@ -8,6 +8,7 @@ import (
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -20,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -49,27 +51,45 @@ type rgbwConfigButtonPresetsButtonDoublepushModel struct {
 }
 
 type rgbwConfigButtonPresetsModel struct {
-	ButtonDoublepush *rgbwConfigButtonPresetsButtonDoublepushModel `tfsdk:"button_doublepush"`
+	ButtonDoublepush types.Object `tfsdk:"button_doublepush"`
 }
 
 type rgbwConfigResourceModel struct {
-	IP                    types.String                  `tfsdk:"ip"`
-	ID                    types.Int64                   `tfsdk:"id"`
-	Name                  types.String                  `tfsdk:"name"`
-	InMode                types.String                  `tfsdk:"in_mode"`
-	InitialState          types.String                  `tfsdk:"initial_state"`
-	AutoOn                types.Bool                    `tfsdk:"auto_on"`
-	AutoOnDelay           types.Float64                 `tfsdk:"auto_on_delay"`
-	AutoOff               types.Bool                    `tfsdk:"auto_off"`
-	AutoOffDelay          types.Float64                 `tfsdk:"auto_off_delay"`
-	TransitionDuration    types.Float64                 `tfsdk:"transition_duration"`
-	MinBrightnessOnToggle types.Float64                 `tfsdk:"min_brightness_on_toggle"`
-	NightMode             *rgbwConfigNightModeModel     `tfsdk:"night_mode"`
-	ButtonFadeRate        types.Float64                 `tfsdk:"button_fade_rate"`
-	ButtonPresets         *rgbwConfigButtonPresetsModel `tfsdk:"button_presets"`
-	CurrentLimit          types.Float64                 `tfsdk:"current_limit"`
-	PowerLimit            types.Float64                 `tfsdk:"power_limit"`
-	VoltageLimit          types.Float64                 `tfsdk:"voltage_limit"`
+	IP                    types.String  `tfsdk:"ip"`
+	ID                    types.Int64   `tfsdk:"id"`
+	Name                  types.String  `tfsdk:"name"`
+	InMode                types.String  `tfsdk:"in_mode"`
+	InitialState          types.String  `tfsdk:"initial_state"`
+	AutoOn                types.Bool    `tfsdk:"auto_on"`
+	AutoOnDelay           types.Float64 `tfsdk:"auto_on_delay"`
+	AutoOff               types.Bool    `tfsdk:"auto_off"`
+	AutoOffDelay          types.Float64 `tfsdk:"auto_off_delay"`
+	TransitionDuration    types.Float64 `tfsdk:"transition_duration"`
+	MinBrightnessOnToggle types.Float64 `tfsdk:"min_brightness_on_toggle"`
+	NightMode             types.Object  `tfsdk:"night_mode"`
+	ButtonFadeRate        types.Float64 `tfsdk:"button_fade_rate"`
+	ButtonPresets         types.Object  `tfsdk:"button_presets"`
+	CurrentLimit          types.Float64 `tfsdk:"current_limit"`
+	PowerLimit            types.Float64 `tfsdk:"power_limit"`
+	VoltageLimit          types.Float64 `tfsdk:"voltage_limit"`
+}
+
+var rgbwConfigNightModeAttrTypes = map[string]attr.Type{
+	"enable":         types.BoolType,
+	"brightness":     types.Float64Type,
+	"rgb":            types.ListType{ElemType: types.Float64Type},
+	"white":          types.Float64Type,
+	"active_between": types.ListType{ElemType: types.StringType},
+}
+
+var rgbwConfigButtonPresetsButtonDoublepushAttrTypes = map[string]attr.Type{
+	"brightness": types.Float64Type,
+	"rgb":        types.ListType{ElemType: types.Float64Type},
+	"white":      types.Float64Type,
+}
+
+var rgbwConfigButtonPresetsAttrTypes = map[string]attr.Type{
+	"button_doublepush": types.ObjectType{AttrTypes: rgbwConfigButtonPresetsButtonDoublepushAttrTypes},
 }
 
 func (r *rgbwConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -249,87 +269,147 @@ func (r *rgbwConfigResource) get(ctx context.Context, m *rgbwConfigResourceModel
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.InMode != nil {
 		m.InMode = types.StringValue(*got.InMode)
+	} else if m.InMode.IsUnknown() {
+		m.InMode = types.StringNull()
 	}
 	if got.InitialState != nil {
 		m.InitialState = types.StringValue(*got.InitialState)
+	} else if m.InitialState.IsUnknown() {
+		m.InitialState = types.StringNull()
 	}
 	if got.AutoOn != nil {
 		m.AutoOn = types.BoolValue(*got.AutoOn)
+	} else if m.AutoOn.IsUnknown() {
+		m.AutoOn = types.BoolNull()
 	}
 	if got.AutoOnDelay != nil {
 		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	} else if m.AutoOnDelay.IsUnknown() {
+		m.AutoOnDelay = types.Float64Null()
 	}
 	if got.AutoOff != nil {
 		m.AutoOff = types.BoolValue(*got.AutoOff)
+	} else if m.AutoOff.IsUnknown() {
+		m.AutoOff = types.BoolNull()
 	}
 	if got.AutoOffDelay != nil {
 		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	} else if m.AutoOffDelay.IsUnknown() {
+		m.AutoOffDelay = types.Float64Null()
 	}
 	if got.TransitionDuration != nil {
 		m.TransitionDuration = types.Float64Value(*got.TransitionDuration)
+	} else if m.TransitionDuration.IsUnknown() {
+		m.TransitionDuration = types.Float64Null()
 	}
 	if got.MinBrightnessOnToggle != nil {
 		m.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
+	} else if m.MinBrightnessOnToggle.IsUnknown() {
+		m.MinBrightnessOnToggle = types.Float64Null()
 	}
 	if got.NightMode != nil {
-		if m.NightMode == nil {
-			m.NightMode = &rgbwConfigNightModeModel{}
+		var sNightMode rgbwConfigNightModeModel
+		if !m.NightMode.IsNull() && !m.NightMode.IsUnknown() {
+			diags.Append(m.NightMode.As(ctx, &sNightMode, basetypes.ObjectAsOptions{})...)
 		}
 		if got.NightMode.Enable != nil {
-			m.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+			sNightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		} else if sNightMode.Enable.IsUnknown() {
+			sNightMode.Enable = types.BoolNull()
 		}
 		if got.NightMode.Brightness != nil {
-			m.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+			sNightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		} else if sNightMode.Brightness.IsUnknown() {
+			sNightMode.Brightness = types.Float64Null()
 		}
 		if got.NightMode.RGB != nil {
 			l, d := types.ListValueFrom(ctx, types.Float64Type, got.NightMode.RGB)
 			diags.Append(d...)
-			m.NightMode.RGB = l
+			sNightMode.RGB = l
+		} else if sNightMode.RGB.IsUnknown() {
+			sNightMode.RGB = types.ListNull(types.Float64Type)
 		}
 		if got.NightMode.White != nil {
-			m.NightMode.White = types.Float64Value(*got.NightMode.White)
+			sNightMode.White = types.Float64Value(*got.NightMode.White)
+		} else if sNightMode.White.IsUnknown() {
+			sNightMode.White = types.Float64Null()
 		}
 		if got.NightMode.ActiveBetween != nil {
 			l, d := types.ListValueFrom(ctx, types.StringType, got.NightMode.ActiveBetween)
 			diags.Append(d...)
-			m.NightMode.ActiveBetween = l
+			sNightMode.ActiveBetween = l
+		} else if sNightMode.ActiveBetween.IsUnknown() {
+			sNightMode.ActiveBetween = types.ListNull(types.StringType)
 		}
+		oNightMode, dNightMode := types.ObjectValueFrom(ctx, rgbwConfigNightModeAttrTypes, sNightMode)
+		diags.Append(dNightMode...)
+		m.NightMode = oNightMode
+	} else {
+		m.NightMode = types.ObjectNull(rgbwConfigNightModeAttrTypes)
 	}
 	if got.ButtonFadeRate != nil {
 		m.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
+	} else if m.ButtonFadeRate.IsUnknown() {
+		m.ButtonFadeRate = types.Float64Null()
 	}
 	if got.ButtonPresets != nil {
-		if m.ButtonPresets == nil {
-			m.ButtonPresets = &rgbwConfigButtonPresetsModel{}
+		var sButtonPresets rgbwConfigButtonPresetsModel
+		if !m.ButtonPresets.IsNull() && !m.ButtonPresets.IsUnknown() {
+			diags.Append(m.ButtonPresets.As(ctx, &sButtonPresets, basetypes.ObjectAsOptions{})...)
 		}
 		if got.ButtonPresets.ButtonDoublepush != nil {
-			if m.ButtonPresets.ButtonDoublepush == nil {
-				m.ButtonPresets.ButtonDoublepush = &rgbwConfigButtonPresetsButtonDoublepushModel{}
+			var sButtonPresetsButtonDoublepush rgbwConfigButtonPresetsButtonDoublepushModel
+			if !sButtonPresets.ButtonDoublepush.IsNull() && !sButtonPresets.ButtonDoublepush.IsUnknown() {
+				diags.Append(sButtonPresets.ButtonDoublepush.As(ctx, &sButtonPresetsButtonDoublepush, basetypes.ObjectAsOptions{})...)
 			}
 			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
-				m.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
+				sButtonPresetsButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
+			} else if sButtonPresetsButtonDoublepush.Brightness.IsUnknown() {
+				sButtonPresetsButtonDoublepush.Brightness = types.Float64Null()
 			}
 			if got.ButtonPresets.ButtonDoublepush.RGB != nil {
 				l, d := types.ListValueFrom(ctx, types.Float64Type, got.ButtonPresets.ButtonDoublepush.RGB)
 				diags.Append(d...)
-				m.ButtonPresets.ButtonDoublepush.RGB = l
+				sButtonPresetsButtonDoublepush.RGB = l
+			} else if sButtonPresetsButtonDoublepush.RGB.IsUnknown() {
+				sButtonPresetsButtonDoublepush.RGB = types.ListNull(types.Float64Type)
 			}
 			if got.ButtonPresets.ButtonDoublepush.White != nil {
-				m.ButtonPresets.ButtonDoublepush.White = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.White)
+				sButtonPresetsButtonDoublepush.White = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.White)
+			} else if sButtonPresetsButtonDoublepush.White.IsUnknown() {
+				sButtonPresetsButtonDoublepush.White = types.Float64Null()
 			}
+			oButtonPresetsButtonDoublepush, dButtonPresetsButtonDoublepush := types.ObjectValueFrom(ctx, rgbwConfigButtonPresetsButtonDoublepushAttrTypes, sButtonPresetsButtonDoublepush)
+			diags.Append(dButtonPresetsButtonDoublepush...)
+			sButtonPresets.ButtonDoublepush = oButtonPresetsButtonDoublepush
+		} else {
+			sButtonPresets.ButtonDoublepush = types.ObjectNull(rgbwConfigButtonPresetsButtonDoublepushAttrTypes)
 		}
+		oButtonPresets, dButtonPresets := types.ObjectValueFrom(ctx, rgbwConfigButtonPresetsAttrTypes, sButtonPresets)
+		diags.Append(dButtonPresets...)
+		m.ButtonPresets = oButtonPresets
+	} else {
+		m.ButtonPresets = types.ObjectNull(rgbwConfigButtonPresetsAttrTypes)
 	}
 	if got.CurrentLimit != nil {
 		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	} else if m.CurrentLimit.IsUnknown() {
+		m.CurrentLimit = types.Float64Null()
 	}
 	if got.PowerLimit != nil {
 		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	} else if m.PowerLimit.IsUnknown() {
+		m.PowerLimit = types.Float64Null()
 	}
 	if got.VoltageLimit != nil {
 		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	} else if m.VoltageLimit.IsUnknown() {
+		m.VoltageLimit = types.Float64Null()
 	}
 }
 
@@ -385,28 +465,30 @@ func (r *rgbwConfigResource) apply(ctx context.Context, plan rgbwConfigResourceM
 		v := plan.MinBrightnessOnToggle.ValueFloat64()
 		cfg.MinBrightnessOnToggle = &v
 	}
-	if plan.NightMode != nil {
+	if !plan.NightMode.IsNull() && !plan.NightMode.IsUnknown() {
+		var wNightMode rgbwConfigNightModeModel
+		diags.Append(plan.NightMode.As(ctx, &wNightMode, basetypes.ObjectAsOptions{})...)
 		cfg.NightMode = &components.RGBWConfigNightMode{}
-		if !plan.NightMode.Enable.IsNull() && !plan.NightMode.Enable.IsUnknown() {
-			v := plan.NightMode.Enable.ValueBool()
+		if !wNightMode.Enable.IsNull() && !wNightMode.Enable.IsUnknown() {
+			v := wNightMode.Enable.ValueBool()
 			cfg.NightMode.Enable = &v
 		}
-		if !plan.NightMode.Brightness.IsNull() && !plan.NightMode.Brightness.IsUnknown() {
-			v := plan.NightMode.Brightness.ValueFloat64()
+		if !wNightMode.Brightness.IsNull() && !wNightMode.Brightness.IsUnknown() {
+			v := wNightMode.Brightness.ValueFloat64()
 			cfg.NightMode.Brightness = &v
 		}
-		if !plan.NightMode.RGB.IsNull() && !plan.NightMode.RGB.IsUnknown() {
+		if !wNightMode.RGB.IsNull() && !wNightMode.RGB.IsUnknown() {
 			var v []float64
-			diags.Append(plan.NightMode.RGB.ElementsAs(ctx, &v, false)...)
+			diags.Append(wNightMode.RGB.ElementsAs(ctx, &v, false)...)
 			cfg.NightMode.RGB = v
 		}
-		if !plan.NightMode.White.IsNull() && !plan.NightMode.White.IsUnknown() {
-			v := plan.NightMode.White.ValueFloat64()
+		if !wNightMode.White.IsNull() && !wNightMode.White.IsUnknown() {
+			v := wNightMode.White.ValueFloat64()
 			cfg.NightMode.White = &v
 		}
-		if !plan.NightMode.ActiveBetween.IsNull() && !plan.NightMode.ActiveBetween.IsUnknown() {
+		if !wNightMode.ActiveBetween.IsNull() && !wNightMode.ActiveBetween.IsUnknown() {
 			var v []string
-			diags.Append(plan.NightMode.ActiveBetween.ElementsAs(ctx, &v, false)...)
+			diags.Append(wNightMode.ActiveBetween.ElementsAs(ctx, &v, false)...)
 			cfg.NightMode.ActiveBetween = v
 		}
 	}
@@ -414,21 +496,25 @@ func (r *rgbwConfigResource) apply(ctx context.Context, plan rgbwConfigResourceM
 		v := plan.ButtonFadeRate.ValueFloat64()
 		cfg.ButtonFadeRate = &v
 	}
-	if plan.ButtonPresets != nil {
+	if !plan.ButtonPresets.IsNull() && !plan.ButtonPresets.IsUnknown() {
+		var wButtonPresets rgbwConfigButtonPresetsModel
+		diags.Append(plan.ButtonPresets.As(ctx, &wButtonPresets, basetypes.ObjectAsOptions{})...)
 		cfg.ButtonPresets = &components.RGBWConfigButtonPresets{}
-		if plan.ButtonPresets.ButtonDoublepush != nil {
+		if !wButtonPresets.ButtonDoublepush.IsNull() && !wButtonPresets.ButtonDoublepush.IsUnknown() {
+			var wButtonPresetsButtonDoublepush rgbwConfigButtonPresetsButtonDoublepushModel
+			diags.Append(wButtonPresets.ButtonDoublepush.As(ctx, &wButtonPresetsButtonDoublepush, basetypes.ObjectAsOptions{})...)
 			cfg.ButtonPresets.ButtonDoublepush = &components.RGBWConfigButtonPresetsButtonDoublepush{}
-			if !plan.ButtonPresets.ButtonDoublepush.Brightness.IsNull() && !plan.ButtonPresets.ButtonDoublepush.Brightness.IsUnknown() {
-				v := plan.ButtonPresets.ButtonDoublepush.Brightness.ValueFloat64()
+			if !wButtonPresetsButtonDoublepush.Brightness.IsNull() && !wButtonPresetsButtonDoublepush.Brightness.IsUnknown() {
+				v := wButtonPresetsButtonDoublepush.Brightness.ValueFloat64()
 				cfg.ButtonPresets.ButtonDoublepush.Brightness = &v
 			}
-			if !plan.ButtonPresets.ButtonDoublepush.RGB.IsNull() && !plan.ButtonPresets.ButtonDoublepush.RGB.IsUnknown() {
+			if !wButtonPresetsButtonDoublepush.RGB.IsNull() && !wButtonPresetsButtonDoublepush.RGB.IsUnknown() {
 				var v []float64
-				diags.Append(plan.ButtonPresets.ButtonDoublepush.RGB.ElementsAs(ctx, &v, false)...)
+				diags.Append(wButtonPresetsButtonDoublepush.RGB.ElementsAs(ctx, &v, false)...)
 				cfg.ButtonPresets.ButtonDoublepush.RGB = v
 			}
-			if !plan.ButtonPresets.ButtonDoublepush.White.IsNull() && !plan.ButtonPresets.ButtonDoublepush.White.IsUnknown() {
-				v := plan.ButtonPresets.ButtonDoublepush.White.ValueFloat64()
+			if !wButtonPresetsButtonDoublepush.White.IsNull() && !wButtonPresetsButtonDoublepush.White.IsUnknown() {
+				v := wButtonPresetsButtonDoublepush.White.ValueFloat64()
 				cfg.ButtonPresets.ButtonDoublepush.White = &v
 			}
 		}

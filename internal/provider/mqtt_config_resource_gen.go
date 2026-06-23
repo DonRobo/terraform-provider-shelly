@@ -125,33 +125,53 @@ func (r *mqttConfigResource) get(ctx context.Context, m *mqttConfigResourceModel
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 	if got.Server != nil {
 		m.Server = types.StringValue(*got.Server)
+	} else if m.Server.IsUnknown() {
+		m.Server = types.StringNull()
 	}
 	if got.ClientID != nil {
 		m.ClientID = types.StringValue(*got.ClientID)
+	} else if m.ClientID.IsUnknown() {
+		m.ClientID = types.StringNull()
 	}
 	if got.User != nil {
 		m.User = types.StringValue(*got.User)
+	} else if m.User.IsUnknown() {
+		m.User = types.StringNull()
 	}
 	if got.SSLCA != nil {
 		m.SSLCA = types.StringValue(*got.SSLCA)
+	} else if m.SSLCA.IsUnknown() {
+		m.SSLCA = types.StringNull()
 	}
 	if got.TopicPrefix != nil {
 		m.TopicPrefix = types.StringValue(*got.TopicPrefix)
+	} else if m.TopicPrefix.IsUnknown() {
+		m.TopicPrefix = types.StringNull()
 	}
 	if got.RPCNtf != nil {
 		m.RPCNtf = types.BoolValue(*got.RPCNtf)
+	} else if m.RPCNtf.IsUnknown() {
+		m.RPCNtf = types.BoolNull()
 	}
 	if got.StatusNtf != nil {
 		m.StatusNtf = types.BoolValue(*got.StatusNtf)
+	} else if m.StatusNtf.IsUnknown() {
+		m.StatusNtf = types.BoolNull()
 	}
 	if got.UseClientCert != nil {
 		m.UseClientCert = types.BoolValue(*got.UseClientCert)
+	} else if m.UseClientCert.IsUnknown() {
+		m.UseClientCert = types.BoolNull()
 	}
 	if got.EnableControl != nil {
 		m.EnableControl = types.BoolValue(*got.EnableControl)
+	} else if m.EnableControl.IsUnknown() {
+		m.EnableControl = types.BoolNull()
 	}
 }
 

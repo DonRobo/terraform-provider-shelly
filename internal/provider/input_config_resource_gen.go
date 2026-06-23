@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -48,21 +50,36 @@ type inputConfigXfreqModel struct {
 }
 
 type inputConfigResourceModel struct {
-	IP           types.String              `tfsdk:"ip"`
-	ID           types.Int64               `tfsdk:"id"`
-	Name         types.String              `tfsdk:"name"`
-	Type         types.String              `tfsdk:"type"`
-	Enable       types.Bool                `tfsdk:"enable"`
-	Invert       types.Bool                `tfsdk:"invert"`
-	FactoryReset types.Bool                `tfsdk:"factory_reset"`
-	ReportThr    types.Float64             `tfsdk:"report_thr"`
-	Range        types.Float64             `tfsdk:"range"`
-	Xpercent     *inputConfigXpercentModel `tfsdk:"xpercent"`
-	CountRepThr  types.Float64             `tfsdk:"count_rep_thr"`
-	FreqWindow   types.Float64             `tfsdk:"freq_window"`
-	FreqRepThr   types.Float64             `tfsdk:"freq_rep_thr"`
-	Xcounts      *inputConfigXcountsModel  `tfsdk:"xcounts"`
-	Xfreq        *inputConfigXfreqModel    `tfsdk:"xfreq"`
+	IP           types.String  `tfsdk:"ip"`
+	ID           types.Int64   `tfsdk:"id"`
+	Name         types.String  `tfsdk:"name"`
+	Type         types.String  `tfsdk:"type"`
+	Enable       types.Bool    `tfsdk:"enable"`
+	Invert       types.Bool    `tfsdk:"invert"`
+	FactoryReset types.Bool    `tfsdk:"factory_reset"`
+	ReportThr    types.Float64 `tfsdk:"report_thr"`
+	Range        types.Float64 `tfsdk:"range"`
+	Xpercent     types.Object  `tfsdk:"xpercent"`
+	CountRepThr  types.Float64 `tfsdk:"count_rep_thr"`
+	FreqWindow   types.Float64 `tfsdk:"freq_window"`
+	FreqRepThr   types.Float64 `tfsdk:"freq_rep_thr"`
+	Xcounts      types.Object  `tfsdk:"xcounts"`
+	Xfreq        types.Object  `tfsdk:"xfreq"`
+}
+
+var inputConfigXpercentAttrTypes = map[string]attr.Type{
+	"expr": types.StringType,
+	"unit": types.StringType,
+}
+
+var inputConfigXcountsAttrTypes = map[string]attr.Type{
+	"expr": types.StringType,
+	"unit": types.StringType,
+}
+
+var inputConfigXfreqAttrTypes = map[string]attr.Type{
+	"expr": types.StringType,
+	"unit": types.StringType,
 }
 
 func (r *inputConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -210,66 +227,116 @@ func (r *inputConfigResource) get(ctx context.Context, m *inputConfigResourceMod
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.Type != nil {
 		m.Type = types.StringValue(*got.Type)
+	} else if m.Type.IsUnknown() {
+		m.Type = types.StringNull()
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 	if got.Invert != nil {
 		m.Invert = types.BoolValue(*got.Invert)
+	} else if m.Invert.IsUnknown() {
+		m.Invert = types.BoolNull()
 	}
 	if got.FactoryReset != nil {
 		m.FactoryReset = types.BoolValue(*got.FactoryReset)
+	} else if m.FactoryReset.IsUnknown() {
+		m.FactoryReset = types.BoolNull()
 	}
 	if got.ReportThr != nil {
 		m.ReportThr = types.Float64Value(*got.ReportThr)
+	} else if m.ReportThr.IsUnknown() {
+		m.ReportThr = types.Float64Null()
 	}
 	if got.Range != nil {
 		m.Range = types.Float64Value(*got.Range)
+	} else if m.Range.IsUnknown() {
+		m.Range = types.Float64Null()
 	}
 	if got.Xpercent != nil {
-		if m.Xpercent == nil {
-			m.Xpercent = &inputConfigXpercentModel{}
+		var sXpercent inputConfigXpercentModel
+		if !m.Xpercent.IsNull() && !m.Xpercent.IsUnknown() {
+			diags.Append(m.Xpercent.As(ctx, &sXpercent, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Xpercent.Expr != nil {
-			m.Xpercent.Expr = types.StringValue(*got.Xpercent.Expr)
+			sXpercent.Expr = types.StringValue(*got.Xpercent.Expr)
+		} else if sXpercent.Expr.IsUnknown() {
+			sXpercent.Expr = types.StringNull()
 		}
 		if got.Xpercent.Unit != nil {
-			m.Xpercent.Unit = types.StringValue(*got.Xpercent.Unit)
+			sXpercent.Unit = types.StringValue(*got.Xpercent.Unit)
+		} else if sXpercent.Unit.IsUnknown() {
+			sXpercent.Unit = types.StringNull()
 		}
+		oXpercent, dXpercent := types.ObjectValueFrom(ctx, inputConfigXpercentAttrTypes, sXpercent)
+		diags.Append(dXpercent...)
+		m.Xpercent = oXpercent
+	} else {
+		m.Xpercent = types.ObjectNull(inputConfigXpercentAttrTypes)
 	}
 	if got.CountRepThr != nil {
 		m.CountRepThr = types.Float64Value(*got.CountRepThr)
+	} else if m.CountRepThr.IsUnknown() {
+		m.CountRepThr = types.Float64Null()
 	}
 	if got.FreqWindow != nil {
 		m.FreqWindow = types.Float64Value(*got.FreqWindow)
+	} else if m.FreqWindow.IsUnknown() {
+		m.FreqWindow = types.Float64Null()
 	}
 	if got.FreqRepThr != nil {
 		m.FreqRepThr = types.Float64Value(*got.FreqRepThr)
+	} else if m.FreqRepThr.IsUnknown() {
+		m.FreqRepThr = types.Float64Null()
 	}
 	if got.Xcounts != nil {
-		if m.Xcounts == nil {
-			m.Xcounts = &inputConfigXcountsModel{}
+		var sXcounts inputConfigXcountsModel
+		if !m.Xcounts.IsNull() && !m.Xcounts.IsUnknown() {
+			diags.Append(m.Xcounts.As(ctx, &sXcounts, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Xcounts.Expr != nil {
-			m.Xcounts.Expr = types.StringValue(*got.Xcounts.Expr)
+			sXcounts.Expr = types.StringValue(*got.Xcounts.Expr)
+		} else if sXcounts.Expr.IsUnknown() {
+			sXcounts.Expr = types.StringNull()
 		}
 		if got.Xcounts.Unit != nil {
-			m.Xcounts.Unit = types.StringValue(*got.Xcounts.Unit)
+			sXcounts.Unit = types.StringValue(*got.Xcounts.Unit)
+		} else if sXcounts.Unit.IsUnknown() {
+			sXcounts.Unit = types.StringNull()
 		}
+		oXcounts, dXcounts := types.ObjectValueFrom(ctx, inputConfigXcountsAttrTypes, sXcounts)
+		diags.Append(dXcounts...)
+		m.Xcounts = oXcounts
+	} else {
+		m.Xcounts = types.ObjectNull(inputConfigXcountsAttrTypes)
 	}
 	if got.Xfreq != nil {
-		if m.Xfreq == nil {
-			m.Xfreq = &inputConfigXfreqModel{}
+		var sXfreq inputConfigXfreqModel
+		if !m.Xfreq.IsNull() && !m.Xfreq.IsUnknown() {
+			diags.Append(m.Xfreq.As(ctx, &sXfreq, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Xfreq.Expr != nil {
-			m.Xfreq.Expr = types.StringValue(*got.Xfreq.Expr)
+			sXfreq.Expr = types.StringValue(*got.Xfreq.Expr)
+		} else if sXfreq.Expr.IsUnknown() {
+			sXfreq.Expr = types.StringNull()
 		}
 		if got.Xfreq.Unit != nil {
-			m.Xfreq.Unit = types.StringValue(*got.Xfreq.Unit)
+			sXfreq.Unit = types.StringValue(*got.Xfreq.Unit)
+		} else if sXfreq.Unit.IsUnknown() {
+			sXfreq.Unit = types.StringNull()
 		}
+		oXfreq, dXfreq := types.ObjectValueFrom(ctx, inputConfigXfreqAttrTypes, sXfreq)
+		diags.Append(dXfreq...)
+		m.Xfreq = oXfreq
+	} else {
+		m.Xfreq = types.ObjectNull(inputConfigXfreqAttrTypes)
 	}
 }
 
@@ -317,14 +384,16 @@ func (r *inputConfigResource) apply(ctx context.Context, plan inputConfigResourc
 		v := plan.Range.ValueFloat64()
 		cfg.Range = &v
 	}
-	if plan.Xpercent != nil {
+	if !plan.Xpercent.IsNull() && !plan.Xpercent.IsUnknown() {
+		var wXpercent inputConfigXpercentModel
+		diags.Append(plan.Xpercent.As(ctx, &wXpercent, basetypes.ObjectAsOptions{})...)
 		cfg.Xpercent = &components.InputConfigXpercent{}
-		if !plan.Xpercent.Expr.IsNull() && !plan.Xpercent.Expr.IsUnknown() {
-			v := plan.Xpercent.Expr.ValueString()
+		if !wXpercent.Expr.IsNull() && !wXpercent.Expr.IsUnknown() {
+			v := wXpercent.Expr.ValueString()
 			cfg.Xpercent.Expr = &v
 		}
-		if !plan.Xpercent.Unit.IsNull() && !plan.Xpercent.Unit.IsUnknown() {
-			v := plan.Xpercent.Unit.ValueString()
+		if !wXpercent.Unit.IsNull() && !wXpercent.Unit.IsUnknown() {
+			v := wXpercent.Unit.ValueString()
 			cfg.Xpercent.Unit = &v
 		}
 	}
@@ -340,25 +409,29 @@ func (r *inputConfigResource) apply(ctx context.Context, plan inputConfigResourc
 		v := plan.FreqRepThr.ValueFloat64()
 		cfg.FreqRepThr = &v
 	}
-	if plan.Xcounts != nil {
+	if !plan.Xcounts.IsNull() && !plan.Xcounts.IsUnknown() {
+		var wXcounts inputConfigXcountsModel
+		diags.Append(plan.Xcounts.As(ctx, &wXcounts, basetypes.ObjectAsOptions{})...)
 		cfg.Xcounts = &components.InputConfigXcounts{}
-		if !plan.Xcounts.Expr.IsNull() && !plan.Xcounts.Expr.IsUnknown() {
-			v := plan.Xcounts.Expr.ValueString()
+		if !wXcounts.Expr.IsNull() && !wXcounts.Expr.IsUnknown() {
+			v := wXcounts.Expr.ValueString()
 			cfg.Xcounts.Expr = &v
 		}
-		if !plan.Xcounts.Unit.IsNull() && !plan.Xcounts.Unit.IsUnknown() {
-			v := plan.Xcounts.Unit.ValueString()
+		if !wXcounts.Unit.IsNull() && !wXcounts.Unit.IsUnknown() {
+			v := wXcounts.Unit.ValueString()
 			cfg.Xcounts.Unit = &v
 		}
 	}
-	if plan.Xfreq != nil {
+	if !plan.Xfreq.IsNull() && !plan.Xfreq.IsUnknown() {
+		var wXfreq inputConfigXfreqModel
+		diags.Append(plan.Xfreq.As(ctx, &wXfreq, basetypes.ObjectAsOptions{})...)
 		cfg.Xfreq = &components.InputConfigXfreq{}
-		if !plan.Xfreq.Expr.IsNull() && !plan.Xfreq.Expr.IsUnknown() {
-			v := plan.Xfreq.Expr.ValueString()
+		if !wXfreq.Expr.IsNull() && !wXfreq.Expr.IsUnknown() {
+			v := wXfreq.Expr.ValueString()
 			cfg.Xfreq.Expr = &v
 		}
-		if !plan.Xfreq.Unit.IsNull() && !plan.Xfreq.Unit.IsUnknown() {
-			v := plan.Xfreq.Unit.ValueString()
+		if !wXfreq.Unit.IsNull() && !wXfreq.Unit.IsUnknown() {
+			v := wXfreq.Unit.ValueString()
 			cfg.Xfreq.Unit = &v
 		}
 	}

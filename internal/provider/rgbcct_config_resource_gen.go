@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -43,17 +45,26 @@ type rgbcctConfigNightModeModel struct {
 }
 
 type rgbcctConfigResourceModel struct {
-	IP                    types.String                `tfsdk:"ip"`
-	ID                    types.Int64                 `tfsdk:"id"`
-	Name                  types.String                `tfsdk:"name"`
-	InitialState          types.String                `tfsdk:"initial_state"`
-	AutoOn                types.Bool                  `tfsdk:"auto_on"`
-	AutoOnDelay           types.Float64               `tfsdk:"auto_on_delay"`
-	AutoOff               types.Bool                  `tfsdk:"auto_off"`
-	AutoOffDelay          types.Float64               `tfsdk:"auto_off_delay"`
-	TransitionDuration    types.Float64               `tfsdk:"transition_duration"`
-	MinBrightnessOnToggle types.Float64               `tfsdk:"min_brightness_on_toggle"`
-	NightMode             *rgbcctConfigNightModeModel `tfsdk:"night_mode"`
+	IP                    types.String  `tfsdk:"ip"`
+	ID                    types.Int64   `tfsdk:"id"`
+	Name                  types.String  `tfsdk:"name"`
+	InitialState          types.String  `tfsdk:"initial_state"`
+	AutoOn                types.Bool    `tfsdk:"auto_on"`
+	AutoOnDelay           types.Float64 `tfsdk:"auto_on_delay"`
+	AutoOff               types.Bool    `tfsdk:"auto_off"`
+	AutoOffDelay          types.Float64 `tfsdk:"auto_off_delay"`
+	TransitionDuration    types.Float64 `tfsdk:"transition_duration"`
+	MinBrightnessOnToggle types.Float64 `tfsdk:"min_brightness_on_toggle"`
+	NightMode             types.Object  `tfsdk:"night_mode"`
+}
+
+var rgbcctConfigNightModeAttrTypes = map[string]attr.Type{
+	"enable":         types.BoolType,
+	"brightness":     types.Float64Type,
+	"rgb":            types.ListType{ElemType: types.Float64Type},
+	"ct":             types.Float64Type,
+	"mode":           types.StringType,
+	"active_between": types.ListType{ElemType: types.StringType},
 }
 
 func (r *rgbcctConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -175,54 +186,88 @@ func (r *rgbcctConfigResource) get(ctx context.Context, m *rgbcctConfigResourceM
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.InitialState != nil {
 		m.InitialState = types.StringValue(*got.InitialState)
+	} else if m.InitialState.IsUnknown() {
+		m.InitialState = types.StringNull()
 	}
 	if got.AutoOn != nil {
 		m.AutoOn = types.BoolValue(*got.AutoOn)
+	} else if m.AutoOn.IsUnknown() {
+		m.AutoOn = types.BoolNull()
 	}
 	if got.AutoOnDelay != nil {
 		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	} else if m.AutoOnDelay.IsUnknown() {
+		m.AutoOnDelay = types.Float64Null()
 	}
 	if got.AutoOff != nil {
 		m.AutoOff = types.BoolValue(*got.AutoOff)
+	} else if m.AutoOff.IsUnknown() {
+		m.AutoOff = types.BoolNull()
 	}
 	if got.AutoOffDelay != nil {
 		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	} else if m.AutoOffDelay.IsUnknown() {
+		m.AutoOffDelay = types.Float64Null()
 	}
 	if got.TransitionDuration != nil {
 		m.TransitionDuration = types.Float64Value(*got.TransitionDuration)
+	} else if m.TransitionDuration.IsUnknown() {
+		m.TransitionDuration = types.Float64Null()
 	}
 	if got.MinBrightnessOnToggle != nil {
 		m.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
+	} else if m.MinBrightnessOnToggle.IsUnknown() {
+		m.MinBrightnessOnToggle = types.Float64Null()
 	}
 	if got.NightMode != nil {
-		if m.NightMode == nil {
-			m.NightMode = &rgbcctConfigNightModeModel{}
+		var sNightMode rgbcctConfigNightModeModel
+		if !m.NightMode.IsNull() && !m.NightMode.IsUnknown() {
+			diags.Append(m.NightMode.As(ctx, &sNightMode, basetypes.ObjectAsOptions{})...)
 		}
 		if got.NightMode.Enable != nil {
-			m.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+			sNightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		} else if sNightMode.Enable.IsUnknown() {
+			sNightMode.Enable = types.BoolNull()
 		}
 		if got.NightMode.Brightness != nil {
-			m.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+			sNightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		} else if sNightMode.Brightness.IsUnknown() {
+			sNightMode.Brightness = types.Float64Null()
 		}
 		if got.NightMode.RGB != nil {
 			l, d := types.ListValueFrom(ctx, types.Float64Type, got.NightMode.RGB)
 			diags.Append(d...)
-			m.NightMode.RGB = l
+			sNightMode.RGB = l
+		} else if sNightMode.RGB.IsUnknown() {
+			sNightMode.RGB = types.ListNull(types.Float64Type)
 		}
 		if got.NightMode.Ct != nil {
-			m.NightMode.Ct = types.Float64Value(*got.NightMode.Ct)
+			sNightMode.Ct = types.Float64Value(*got.NightMode.Ct)
+		} else if sNightMode.Ct.IsUnknown() {
+			sNightMode.Ct = types.Float64Null()
 		}
 		if got.NightMode.Mode != nil {
-			m.NightMode.Mode = types.StringValue(*got.NightMode.Mode)
+			sNightMode.Mode = types.StringValue(*got.NightMode.Mode)
+		} else if sNightMode.Mode.IsUnknown() {
+			sNightMode.Mode = types.StringNull()
 		}
 		if got.NightMode.ActiveBetween != nil {
 			l, d := types.ListValueFrom(ctx, types.StringType, got.NightMode.ActiveBetween)
 			diags.Append(d...)
-			m.NightMode.ActiveBetween = l
+			sNightMode.ActiveBetween = l
+		} else if sNightMode.ActiveBetween.IsUnknown() {
+			sNightMode.ActiveBetween = types.ListNull(types.StringType)
 		}
+		oNightMode, dNightMode := types.ObjectValueFrom(ctx, rgbcctConfigNightModeAttrTypes, sNightMode)
+		diags.Append(dNightMode...)
+		m.NightMode = oNightMode
+	} else {
+		m.NightMode = types.ObjectNull(rgbcctConfigNightModeAttrTypes)
 	}
 }
 
@@ -274,32 +319,34 @@ func (r *rgbcctConfigResource) apply(ctx context.Context, plan rgbcctConfigResou
 		v := plan.MinBrightnessOnToggle.ValueFloat64()
 		cfg.MinBrightnessOnToggle = &v
 	}
-	if plan.NightMode != nil {
+	if !plan.NightMode.IsNull() && !plan.NightMode.IsUnknown() {
+		var wNightMode rgbcctConfigNightModeModel
+		diags.Append(plan.NightMode.As(ctx, &wNightMode, basetypes.ObjectAsOptions{})...)
 		cfg.NightMode = &components.RGBCCTConfigNightMode{}
-		if !plan.NightMode.Enable.IsNull() && !plan.NightMode.Enable.IsUnknown() {
-			v := plan.NightMode.Enable.ValueBool()
+		if !wNightMode.Enable.IsNull() && !wNightMode.Enable.IsUnknown() {
+			v := wNightMode.Enable.ValueBool()
 			cfg.NightMode.Enable = &v
 		}
-		if !plan.NightMode.Brightness.IsNull() && !plan.NightMode.Brightness.IsUnknown() {
-			v := plan.NightMode.Brightness.ValueFloat64()
+		if !wNightMode.Brightness.IsNull() && !wNightMode.Brightness.IsUnknown() {
+			v := wNightMode.Brightness.ValueFloat64()
 			cfg.NightMode.Brightness = &v
 		}
-		if !plan.NightMode.RGB.IsNull() && !plan.NightMode.RGB.IsUnknown() {
+		if !wNightMode.RGB.IsNull() && !wNightMode.RGB.IsUnknown() {
 			var v []float64
-			diags.Append(plan.NightMode.RGB.ElementsAs(ctx, &v, false)...)
+			diags.Append(wNightMode.RGB.ElementsAs(ctx, &v, false)...)
 			cfg.NightMode.RGB = v
 		}
-		if !plan.NightMode.Ct.IsNull() && !plan.NightMode.Ct.IsUnknown() {
-			v := plan.NightMode.Ct.ValueFloat64()
+		if !wNightMode.Ct.IsNull() && !wNightMode.Ct.IsUnknown() {
+			v := wNightMode.Ct.ValueFloat64()
 			cfg.NightMode.Ct = &v
 		}
-		if !plan.NightMode.Mode.IsNull() && !plan.NightMode.Mode.IsUnknown() {
-			v := plan.NightMode.Mode.ValueString()
+		if !wNightMode.Mode.IsNull() && !wNightMode.Mode.IsUnknown() {
+			v := wNightMode.Mode.ValueString()
 			cfg.NightMode.Mode = &v
 		}
-		if !plan.NightMode.ActiveBetween.IsNull() && !plan.NightMode.ActiveBetween.IsUnknown() {
+		if !wNightMode.ActiveBetween.IsNull() && !wNightMode.ActiveBetween.IsUnknown() {
 			var v []string
-			diags.Append(plan.NightMode.ActiveBetween.ElementsAs(ctx, &v, false)...)
+			diags.Append(wNightMode.ActiveBetween.ElementsAs(ctx, &v, false)...)
 			cfg.NightMode.ActiveBetween = v
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -16,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -37,12 +39,18 @@ type em1ConfigAlarmsModel struct {
 }
 
 type em1ConfigResourceModel struct {
-	IP      types.String          `tfsdk:"ip"`
-	ID      types.Int64           `tfsdk:"id"`
-	Name    types.String          `tfsdk:"name"`
-	Reverse types.Bool            `tfsdk:"reverse"`
-	CtType  types.String          `tfsdk:"ct_type"`
-	Alarms  *em1ConfigAlarmsModel `tfsdk:"alarms"`
+	IP      types.String `tfsdk:"ip"`
+	ID      types.Int64  `tfsdk:"id"`
+	Name    types.String `tfsdk:"name"`
+	Reverse types.Bool   `tfsdk:"reverse"`
+	CtType  types.String `tfsdk:"ct_type"`
+	Alarms  types.Object `tfsdk:"alarms"`
+}
+
+var em1ConfigAlarmsAttrTypes = map[string]attr.Type{
+	"voltage": types.ListType{ElemType: types.Float64Type},
+	"current": types.ListType{ElemType: types.Float64Type},
+	"power":   types.ListType{ElemType: types.Float64Type},
 }
 
 func (r *em1ConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -115,32 +123,50 @@ func (r *em1ConfigResource) get(ctx context.Context, m *em1ConfigResourceModel, 
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.Reverse != nil {
 		m.Reverse = types.BoolValue(*got.Reverse)
+	} else if m.Reverse.IsUnknown() {
+		m.Reverse = types.BoolNull()
 	}
 	if got.CtType != nil {
 		m.CtType = types.StringValue(*got.CtType)
+	} else if m.CtType.IsUnknown() {
+		m.CtType = types.StringNull()
 	}
 	if got.Alarms != nil {
-		if m.Alarms == nil {
-			m.Alarms = &em1ConfigAlarmsModel{}
+		var sAlarms em1ConfigAlarmsModel
+		if !m.Alarms.IsNull() && !m.Alarms.IsUnknown() {
+			diags.Append(m.Alarms.As(ctx, &sAlarms, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Alarms.Voltage != nil {
 			l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.Voltage)
 			diags.Append(d...)
-			m.Alarms.Voltage = l
+			sAlarms.Voltage = l
+		} else if sAlarms.Voltage.IsUnknown() {
+			sAlarms.Voltage = types.ListNull(types.Float64Type)
 		}
 		if got.Alarms.Current != nil {
 			l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.Current)
 			diags.Append(d...)
-			m.Alarms.Current = l
+			sAlarms.Current = l
+		} else if sAlarms.Current.IsUnknown() {
+			sAlarms.Current = types.ListNull(types.Float64Type)
 		}
 		if got.Alarms.Power != nil {
 			l, d := types.ListValueFrom(ctx, types.Float64Type, got.Alarms.Power)
 			diags.Append(d...)
-			m.Alarms.Power = l
+			sAlarms.Power = l
+		} else if sAlarms.Power.IsUnknown() {
+			sAlarms.Power = types.ListNull(types.Float64Type)
 		}
+		oAlarms, dAlarms := types.ObjectValueFrom(ctx, em1ConfigAlarmsAttrTypes, sAlarms)
+		diags.Append(dAlarms...)
+		m.Alarms = oAlarms
+	} else {
+		m.Alarms = types.ObjectNull(em1ConfigAlarmsAttrTypes)
 	}
 }
 
@@ -172,21 +198,23 @@ func (r *em1ConfigResource) apply(ctx context.Context, plan em1ConfigResourceMod
 		v := plan.CtType.ValueString()
 		cfg.CtType = &v
 	}
-	if plan.Alarms != nil {
+	if !plan.Alarms.IsNull() && !plan.Alarms.IsUnknown() {
+		var wAlarms em1ConfigAlarmsModel
+		diags.Append(plan.Alarms.As(ctx, &wAlarms, basetypes.ObjectAsOptions{})...)
 		cfg.Alarms = &components.EM1ConfigAlarms{}
-		if !plan.Alarms.Voltage.IsNull() && !plan.Alarms.Voltage.IsUnknown() {
+		if !wAlarms.Voltage.IsNull() && !wAlarms.Voltage.IsUnknown() {
 			var v []float64
-			diags.Append(plan.Alarms.Voltage.ElementsAs(ctx, &v, false)...)
+			diags.Append(wAlarms.Voltage.ElementsAs(ctx, &v, false)...)
 			cfg.Alarms.Voltage = v
 		}
-		if !plan.Alarms.Current.IsNull() && !plan.Alarms.Current.IsUnknown() {
+		if !wAlarms.Current.IsNull() && !wAlarms.Current.IsUnknown() {
 			var v []float64
-			diags.Append(plan.Alarms.Current.ElementsAs(ctx, &v, false)...)
+			diags.Append(wAlarms.Current.ElementsAs(ctx, &v, false)...)
 			cfg.Alarms.Current = v
 		}
-		if !plan.Alarms.Power.IsNull() && !plan.Alarms.Power.IsUnknown() {
+		if !wAlarms.Power.IsNull() && !wAlarms.Power.IsUnknown() {
 			var v []float64
-			diags.Append(plan.Alarms.Power.ElementsAs(ctx, &v, false)...)
+			diags.Append(wAlarms.Power.ElementsAs(ctx, &v, false)...)
 			cfg.Alarms.Power = v
 		}
 	}

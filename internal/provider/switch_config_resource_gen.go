@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -38,24 +40,29 @@ type switchConfigCountsModel struct {
 }
 
 type switchConfigResourceModel struct {
-	IP                       types.String             `tfsdk:"ip"`
-	ID                       types.Int64              `tfsdk:"id"`
-	Name                     types.String             `tfsdk:"name"`
-	InMode                   types.String             `tfsdk:"in_mode"`
-	InLocked                 types.Bool               `tfsdk:"in_locked"`
-	InitialState             types.String             `tfsdk:"initial_state"`
-	AutoOn                   types.Bool               `tfsdk:"auto_on"`
-	AutoOnDelay              types.Float64            `tfsdk:"auto_on_delay"`
-	AutoOff                  types.Bool               `tfsdk:"auto_off"`
-	AutoOffDelay             types.Float64            `tfsdk:"auto_off_delay"`
-	AutorecoverVoltageErrors types.Bool               `tfsdk:"autorecover_voltage_errors"`
-	InputID                  types.Float64            `tfsdk:"input_id"`
-	PowerLimit               types.Float64            `tfsdk:"power_limit"`
-	VoltageLimit             types.Float64            `tfsdk:"voltage_limit"`
-	UndervoltageLimit        types.Float64            `tfsdk:"undervoltage_limit"`
-	CurrentLimit             types.Float64            `tfsdk:"current_limit"`
-	Reverse                  types.Bool               `tfsdk:"reverse"`
-	Counts                   *switchConfigCountsModel `tfsdk:"counts"`
+	IP                       types.String  `tfsdk:"ip"`
+	ID                       types.Int64   `tfsdk:"id"`
+	Name                     types.String  `tfsdk:"name"`
+	InMode                   types.String  `tfsdk:"in_mode"`
+	InLocked                 types.Bool    `tfsdk:"in_locked"`
+	InitialState             types.String  `tfsdk:"initial_state"`
+	AutoOn                   types.Bool    `tfsdk:"auto_on"`
+	AutoOnDelay              types.Float64 `tfsdk:"auto_on_delay"`
+	AutoOff                  types.Bool    `tfsdk:"auto_off"`
+	AutoOffDelay             types.Float64 `tfsdk:"auto_off_delay"`
+	AutorecoverVoltageErrors types.Bool    `tfsdk:"autorecover_voltage_errors"`
+	InputID                  types.Float64 `tfsdk:"input_id"`
+	PowerLimit               types.Float64 `tfsdk:"power_limit"`
+	VoltageLimit             types.Float64 `tfsdk:"voltage_limit"`
+	UndervoltageLimit        types.Float64 `tfsdk:"undervoltage_limit"`
+	CurrentLimit             types.Float64 `tfsdk:"current_limit"`
+	Reverse                  types.Bool    `tfsdk:"reverse"`
+	Counts                   types.Object  `tfsdk:"counts"`
+}
+
+var switchConfigCountsAttrTypes = map[string]attr.Type{
+	"enable":    types.BoolType,
+	"power_thr": types.Float64Type,
 }
 
 func (r *switchConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -193,59 +200,99 @@ func (r *switchConfigResource) get(ctx context.Context, m *switchConfigResourceM
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.InMode != nil {
 		m.InMode = types.StringValue(*got.InMode)
+	} else if m.InMode.IsUnknown() {
+		m.InMode = types.StringNull()
 	}
 	if got.InLocked != nil {
 		m.InLocked = types.BoolValue(*got.InLocked)
+	} else if m.InLocked.IsUnknown() {
+		m.InLocked = types.BoolNull()
 	}
 	if got.InitialState != nil {
 		m.InitialState = types.StringValue(*got.InitialState)
+	} else if m.InitialState.IsUnknown() {
+		m.InitialState = types.StringNull()
 	}
 	if got.AutoOn != nil {
 		m.AutoOn = types.BoolValue(*got.AutoOn)
+	} else if m.AutoOn.IsUnknown() {
+		m.AutoOn = types.BoolNull()
 	}
 	if got.AutoOnDelay != nil {
 		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	} else if m.AutoOnDelay.IsUnknown() {
+		m.AutoOnDelay = types.Float64Null()
 	}
 	if got.AutoOff != nil {
 		m.AutoOff = types.BoolValue(*got.AutoOff)
+	} else if m.AutoOff.IsUnknown() {
+		m.AutoOff = types.BoolNull()
 	}
 	if got.AutoOffDelay != nil {
 		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	} else if m.AutoOffDelay.IsUnknown() {
+		m.AutoOffDelay = types.Float64Null()
 	}
 	if got.AutorecoverVoltageErrors != nil {
 		m.AutorecoverVoltageErrors = types.BoolValue(*got.AutorecoverVoltageErrors)
+	} else if m.AutorecoverVoltageErrors.IsUnknown() {
+		m.AutorecoverVoltageErrors = types.BoolNull()
 	}
 	if got.InputID != nil {
 		m.InputID = types.Float64Value(*got.InputID)
+	} else if m.InputID.IsUnknown() {
+		m.InputID = types.Float64Null()
 	}
 	if got.PowerLimit != nil {
 		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	} else if m.PowerLimit.IsUnknown() {
+		m.PowerLimit = types.Float64Null()
 	}
 	if got.VoltageLimit != nil {
 		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	} else if m.VoltageLimit.IsUnknown() {
+		m.VoltageLimit = types.Float64Null()
 	}
 	if got.UndervoltageLimit != nil {
 		m.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
+	} else if m.UndervoltageLimit.IsUnknown() {
+		m.UndervoltageLimit = types.Float64Null()
 	}
 	if got.CurrentLimit != nil {
 		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	} else if m.CurrentLimit.IsUnknown() {
+		m.CurrentLimit = types.Float64Null()
 	}
 	if got.Reverse != nil {
 		m.Reverse = types.BoolValue(*got.Reverse)
+	} else if m.Reverse.IsUnknown() {
+		m.Reverse = types.BoolNull()
 	}
 	if got.Counts != nil {
-		if m.Counts == nil {
-			m.Counts = &switchConfigCountsModel{}
+		var sCounts switchConfigCountsModel
+		if !m.Counts.IsNull() && !m.Counts.IsUnknown() {
+			diags.Append(m.Counts.As(ctx, &sCounts, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Counts.Enable != nil {
-			m.Counts.Enable = types.BoolValue(*got.Counts.Enable)
+			sCounts.Enable = types.BoolValue(*got.Counts.Enable)
+		} else if sCounts.Enable.IsUnknown() {
+			sCounts.Enable = types.BoolNull()
 		}
 		if got.Counts.PowerThr != nil {
-			m.Counts.PowerThr = types.Float64Value(*got.Counts.PowerThr)
+			sCounts.PowerThr = types.Float64Value(*got.Counts.PowerThr)
+		} else if sCounts.PowerThr.IsUnknown() {
+			sCounts.PowerThr = types.Float64Null()
 		}
+		oCounts, dCounts := types.ObjectValueFrom(ctx, switchConfigCountsAttrTypes, sCounts)
+		diags.Append(dCounts...)
+		m.Counts = oCounts
+	} else {
+		m.Counts = types.ObjectNull(switchConfigCountsAttrTypes)
 	}
 }
 
@@ -325,14 +372,16 @@ func (r *switchConfigResource) apply(ctx context.Context, plan switchConfigResou
 		v := plan.Reverse.ValueBool()
 		cfg.Reverse = &v
 	}
-	if plan.Counts != nil {
+	if !plan.Counts.IsNull() && !plan.Counts.IsUnknown() {
+		var wCounts switchConfigCountsModel
+		diags.Append(plan.Counts.As(ctx, &wCounts, basetypes.ObjectAsOptions{})...)
 		cfg.Counts = &components.SwitchConfigCounts{}
-		if !plan.Counts.Enable.IsNull() && !plan.Counts.Enable.IsUnknown() {
-			v := plan.Counts.Enable.ValueBool()
+		if !wCounts.Enable.IsNull() && !wCounts.Enable.IsUnknown() {
+			v := wCounts.Enable.ValueBool()
 			cfg.Counts.Enable = &v
 		}
-		if !plan.Counts.PowerThr.IsNull() && !plan.Counts.PowerThr.IsUnknown() {
-			v := plan.Counts.PowerThr.ValueFloat64()
+		if !wCounts.PowerThr.IsNull() && !wCounts.PowerThr.IsUnknown() {
+			v := wCounts.PowerThr.ValueFloat64()
 			cfg.Counts.PowerThr = &v
 		}
 	}

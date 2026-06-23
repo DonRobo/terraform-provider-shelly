@@ -82,12 +82,18 @@ func (r *temperatureConfigResource) get(ctx context.Context, m *temperatureConfi
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.ReportThrC != nil {
 		m.ReportThrC = types.Float64Value(*got.ReportThrC)
+	} else if m.ReportThrC.IsUnknown() {
+		m.ReportThrC = types.Float64Null()
 	}
 	if got.OffsetC != nil {
 		m.OffsetC = types.Float64Value(*got.OffsetC)
+	} else if m.OffsetC.IsUnknown() {
+		m.OffsetC = types.Float64Null()
 	}
 }
 

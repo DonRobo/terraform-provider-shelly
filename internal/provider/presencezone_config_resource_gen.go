@@ -86,15 +86,23 @@ func (r *presencezoneConfigResource) get(ctx context.Context, m *presencezoneCon
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 	if got.PresenceDelay != nil {
 		m.PresenceDelay = types.Float64Value(*got.PresenceDelay)
+	} else if m.PresenceDelay.IsUnknown() {
+		m.PresenceDelay = types.Float64Null()
 	}
 	if got.AbsenceDelay != nil {
 		m.AbsenceDelay = types.Float64Value(*got.AbsenceDelay)
+	} else if m.AbsenceDelay.IsUnknown() {
+		m.AbsenceDelay = types.Float64Null()
 	}
 }
 

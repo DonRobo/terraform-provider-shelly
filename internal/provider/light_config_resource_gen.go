@@ -8,6 +8,7 @@ import (
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
 	"strconv"
 	"strings"
@@ -43,7 +45,7 @@ type lightConfigButtonPresetsButtonDoublepushModel struct {
 }
 
 type lightConfigButtonPresetsModel struct {
-	ButtonDoublepush *lightConfigButtonPresetsButtonDoublepushModel `tfsdk:"button_doublepush"`
+	ButtonDoublepush types.Object `tfsdk:"button_doublepush"`
 }
 
 type lightConfigWarmupModel struct {
@@ -53,27 +55,46 @@ type lightConfigWarmupModel struct {
 }
 
 type lightConfigResourceModel struct {
-	IP                    types.String                   `tfsdk:"ip"`
-	ID                    types.Int64                    `tfsdk:"id"`
-	Name                  types.String                   `tfsdk:"name"`
-	InMode                types.String                   `tfsdk:"in_mode"`
-	OpMode                types.Float64                  `tfsdk:"op_mode"`
-	InitialState          types.String                   `tfsdk:"initial_state"`
-	AutoOn                types.Bool                     `tfsdk:"auto_on"`
-	AutoOnDelay           types.Float64                  `tfsdk:"auto_on_delay"`
-	AutoOff               types.Bool                     `tfsdk:"auto_off"`
-	AutoOffDelay          types.Float64                  `tfsdk:"auto_off_delay"`
-	TransitionDuration    types.Float64                  `tfsdk:"transition_duration"`
-	Gamma                 types.Float64                  `tfsdk:"gamma"`
-	MinBrightnessOnToggle types.Float64                  `tfsdk:"min_brightness_on_toggle"`
-	NightMode             *lightConfigNightModeModel     `tfsdk:"night_mode"`
-	ButtonFadeRate        types.Float64                  `tfsdk:"button_fade_rate"`
-	ButtonPresets         *lightConfigButtonPresetsModel `tfsdk:"button_presets"`
-	PowerLimit            types.Float64                  `tfsdk:"power_limit"`
-	VoltageLimit          types.Float64                  `tfsdk:"voltage_limit"`
-	UndervoltageLimit     types.Float64                  `tfsdk:"undervoltage_limit"`
-	CurrentLimit          types.Float64                  `tfsdk:"current_limit"`
-	Warmup                *lightConfigWarmupModel        `tfsdk:"warmup"`
+	IP                    types.String  `tfsdk:"ip"`
+	ID                    types.Int64   `tfsdk:"id"`
+	Name                  types.String  `tfsdk:"name"`
+	InMode                types.String  `tfsdk:"in_mode"`
+	OpMode                types.Float64 `tfsdk:"op_mode"`
+	InitialState          types.String  `tfsdk:"initial_state"`
+	AutoOn                types.Bool    `tfsdk:"auto_on"`
+	AutoOnDelay           types.Float64 `tfsdk:"auto_on_delay"`
+	AutoOff               types.Bool    `tfsdk:"auto_off"`
+	AutoOffDelay          types.Float64 `tfsdk:"auto_off_delay"`
+	TransitionDuration    types.Float64 `tfsdk:"transition_duration"`
+	Gamma                 types.Float64 `tfsdk:"gamma"`
+	MinBrightnessOnToggle types.Float64 `tfsdk:"min_brightness_on_toggle"`
+	NightMode             types.Object  `tfsdk:"night_mode"`
+	ButtonFadeRate        types.Float64 `tfsdk:"button_fade_rate"`
+	ButtonPresets         types.Object  `tfsdk:"button_presets"`
+	PowerLimit            types.Float64 `tfsdk:"power_limit"`
+	VoltageLimit          types.Float64 `tfsdk:"voltage_limit"`
+	UndervoltageLimit     types.Float64 `tfsdk:"undervoltage_limit"`
+	CurrentLimit          types.Float64 `tfsdk:"current_limit"`
+	Warmup                types.Object  `tfsdk:"warmup"`
+}
+
+var lightConfigNightModeAttrTypes = map[string]attr.Type{
+	"enable":     types.BoolType,
+	"brightness": types.Float64Type,
+}
+
+var lightConfigButtonPresetsButtonDoublepushAttrTypes = map[string]attr.Type{
+	"brightness": types.Float64Type,
+}
+
+var lightConfigButtonPresetsAttrTypes = map[string]attr.Type{
+	"button_doublepush": types.ObjectType{AttrTypes: lightConfigButtonPresetsButtonDoublepushAttrTypes},
+}
+
+var lightConfigWarmupAttrTypes = map[string]attr.Type{
+	"enable":     types.BoolType,
+	"brightness": types.Float64Type,
+	"time_ms":    types.Float64Type,
 }
 
 func (r *lightConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -263,89 +284,157 @@ func (r *lightConfigResource) get(ctx context.Context, m *lightConfigResourceMod
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	} else if m.Name.IsUnknown() {
+		m.Name = types.StringNull()
 	}
 	if got.InMode != nil {
 		m.InMode = types.StringValue(*got.InMode)
+	} else if m.InMode.IsUnknown() {
+		m.InMode = types.StringNull()
 	}
 	if got.OpMode != nil {
 		m.OpMode = types.Float64Value(*got.OpMode)
+	} else if m.OpMode.IsUnknown() {
+		m.OpMode = types.Float64Null()
 	}
 	if got.InitialState != nil {
 		m.InitialState = types.StringValue(*got.InitialState)
+	} else if m.InitialState.IsUnknown() {
+		m.InitialState = types.StringNull()
 	}
 	if got.AutoOn != nil {
 		m.AutoOn = types.BoolValue(*got.AutoOn)
+	} else if m.AutoOn.IsUnknown() {
+		m.AutoOn = types.BoolNull()
 	}
 	if got.AutoOnDelay != nil {
 		m.AutoOnDelay = types.Float64Value(*got.AutoOnDelay)
+	} else if m.AutoOnDelay.IsUnknown() {
+		m.AutoOnDelay = types.Float64Null()
 	}
 	if got.AutoOff != nil {
 		m.AutoOff = types.BoolValue(*got.AutoOff)
+	} else if m.AutoOff.IsUnknown() {
+		m.AutoOff = types.BoolNull()
 	}
 	if got.AutoOffDelay != nil {
 		m.AutoOffDelay = types.Float64Value(*got.AutoOffDelay)
+	} else if m.AutoOffDelay.IsUnknown() {
+		m.AutoOffDelay = types.Float64Null()
 	}
 	if got.TransitionDuration != nil {
 		m.TransitionDuration = types.Float64Value(*got.TransitionDuration)
+	} else if m.TransitionDuration.IsUnknown() {
+		m.TransitionDuration = types.Float64Null()
 	}
 	if got.Gamma != nil {
 		m.Gamma = types.Float64Value(*got.Gamma)
+	} else if m.Gamma.IsUnknown() {
+		m.Gamma = types.Float64Null()
 	}
 	if got.MinBrightnessOnToggle != nil {
 		m.MinBrightnessOnToggle = types.Float64Value(*got.MinBrightnessOnToggle)
+	} else if m.MinBrightnessOnToggle.IsUnknown() {
+		m.MinBrightnessOnToggle = types.Float64Null()
 	}
 	if got.NightMode != nil {
-		if m.NightMode == nil {
-			m.NightMode = &lightConfigNightModeModel{}
+		var sNightMode lightConfigNightModeModel
+		if !m.NightMode.IsNull() && !m.NightMode.IsUnknown() {
+			diags.Append(m.NightMode.As(ctx, &sNightMode, basetypes.ObjectAsOptions{})...)
 		}
 		if got.NightMode.Enable != nil {
-			m.NightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+			sNightMode.Enable = types.BoolValue(*got.NightMode.Enable)
+		} else if sNightMode.Enable.IsUnknown() {
+			sNightMode.Enable = types.BoolNull()
 		}
 		if got.NightMode.Brightness != nil {
-			m.NightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+			sNightMode.Brightness = types.Float64Value(*got.NightMode.Brightness)
+		} else if sNightMode.Brightness.IsUnknown() {
+			sNightMode.Brightness = types.Float64Null()
 		}
+		oNightMode, dNightMode := types.ObjectValueFrom(ctx, lightConfigNightModeAttrTypes, sNightMode)
+		diags.Append(dNightMode...)
+		m.NightMode = oNightMode
+	} else {
+		m.NightMode = types.ObjectNull(lightConfigNightModeAttrTypes)
 	}
 	if got.ButtonFadeRate != nil {
 		m.ButtonFadeRate = types.Float64Value(*got.ButtonFadeRate)
+	} else if m.ButtonFadeRate.IsUnknown() {
+		m.ButtonFadeRate = types.Float64Null()
 	}
 	if got.ButtonPresets != nil {
-		if m.ButtonPresets == nil {
-			m.ButtonPresets = &lightConfigButtonPresetsModel{}
+		var sButtonPresets lightConfigButtonPresetsModel
+		if !m.ButtonPresets.IsNull() && !m.ButtonPresets.IsUnknown() {
+			diags.Append(m.ButtonPresets.As(ctx, &sButtonPresets, basetypes.ObjectAsOptions{})...)
 		}
 		if got.ButtonPresets.ButtonDoublepush != nil {
-			if m.ButtonPresets.ButtonDoublepush == nil {
-				m.ButtonPresets.ButtonDoublepush = &lightConfigButtonPresetsButtonDoublepushModel{}
+			var sButtonPresetsButtonDoublepush lightConfigButtonPresetsButtonDoublepushModel
+			if !sButtonPresets.ButtonDoublepush.IsNull() && !sButtonPresets.ButtonDoublepush.IsUnknown() {
+				diags.Append(sButtonPresets.ButtonDoublepush.As(ctx, &sButtonPresetsButtonDoublepush, basetypes.ObjectAsOptions{})...)
 			}
 			if got.ButtonPresets.ButtonDoublepush.Brightness != nil {
-				m.ButtonPresets.ButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
+				sButtonPresetsButtonDoublepush.Brightness = types.Float64Value(*got.ButtonPresets.ButtonDoublepush.Brightness)
+			} else if sButtonPresetsButtonDoublepush.Brightness.IsUnknown() {
+				sButtonPresetsButtonDoublepush.Brightness = types.Float64Null()
 			}
+			oButtonPresetsButtonDoublepush, dButtonPresetsButtonDoublepush := types.ObjectValueFrom(ctx, lightConfigButtonPresetsButtonDoublepushAttrTypes, sButtonPresetsButtonDoublepush)
+			diags.Append(dButtonPresetsButtonDoublepush...)
+			sButtonPresets.ButtonDoublepush = oButtonPresetsButtonDoublepush
+		} else {
+			sButtonPresets.ButtonDoublepush = types.ObjectNull(lightConfigButtonPresetsButtonDoublepushAttrTypes)
 		}
+		oButtonPresets, dButtonPresets := types.ObjectValueFrom(ctx, lightConfigButtonPresetsAttrTypes, sButtonPresets)
+		diags.Append(dButtonPresets...)
+		m.ButtonPresets = oButtonPresets
+	} else {
+		m.ButtonPresets = types.ObjectNull(lightConfigButtonPresetsAttrTypes)
 	}
 	if got.PowerLimit != nil {
 		m.PowerLimit = types.Float64Value(*got.PowerLimit)
+	} else if m.PowerLimit.IsUnknown() {
+		m.PowerLimit = types.Float64Null()
 	}
 	if got.VoltageLimit != nil {
 		m.VoltageLimit = types.Float64Value(*got.VoltageLimit)
+	} else if m.VoltageLimit.IsUnknown() {
+		m.VoltageLimit = types.Float64Null()
 	}
 	if got.UndervoltageLimit != nil {
 		m.UndervoltageLimit = types.Float64Value(*got.UndervoltageLimit)
+	} else if m.UndervoltageLimit.IsUnknown() {
+		m.UndervoltageLimit = types.Float64Null()
 	}
 	if got.CurrentLimit != nil {
 		m.CurrentLimit = types.Float64Value(*got.CurrentLimit)
+	} else if m.CurrentLimit.IsUnknown() {
+		m.CurrentLimit = types.Float64Null()
 	}
 	if got.Warmup != nil {
-		if m.Warmup == nil {
-			m.Warmup = &lightConfigWarmupModel{}
+		var sWarmup lightConfigWarmupModel
+		if !m.Warmup.IsNull() && !m.Warmup.IsUnknown() {
+			diags.Append(m.Warmup.As(ctx, &sWarmup, basetypes.ObjectAsOptions{})...)
 		}
 		if got.Warmup.Enable != nil {
-			m.Warmup.Enable = types.BoolValue(*got.Warmup.Enable)
+			sWarmup.Enable = types.BoolValue(*got.Warmup.Enable)
+		} else if sWarmup.Enable.IsUnknown() {
+			sWarmup.Enable = types.BoolNull()
 		}
 		if got.Warmup.Brightness != nil {
-			m.Warmup.Brightness = types.Float64Value(*got.Warmup.Brightness)
+			sWarmup.Brightness = types.Float64Value(*got.Warmup.Brightness)
+		} else if sWarmup.Brightness.IsUnknown() {
+			sWarmup.Brightness = types.Float64Null()
 		}
 		if got.Warmup.TimeMs != nil {
-			m.Warmup.TimeMs = types.Float64Value(*got.Warmup.TimeMs)
+			sWarmup.TimeMs = types.Float64Value(*got.Warmup.TimeMs)
+		} else if sWarmup.TimeMs.IsUnknown() {
+			sWarmup.TimeMs = types.Float64Null()
 		}
+		oWarmup, dWarmup := types.ObjectValueFrom(ctx, lightConfigWarmupAttrTypes, sWarmup)
+		diags.Append(dWarmup...)
+		m.Warmup = oWarmup
+	} else {
+		m.Warmup = types.ObjectNull(lightConfigWarmupAttrTypes)
 	}
 }
 
@@ -409,14 +498,16 @@ func (r *lightConfigResource) apply(ctx context.Context, plan lightConfigResourc
 		v := plan.MinBrightnessOnToggle.ValueFloat64()
 		cfg.MinBrightnessOnToggle = &v
 	}
-	if plan.NightMode != nil {
+	if !plan.NightMode.IsNull() && !plan.NightMode.IsUnknown() {
+		var wNightMode lightConfigNightModeModel
+		diags.Append(plan.NightMode.As(ctx, &wNightMode, basetypes.ObjectAsOptions{})...)
 		cfg.NightMode = &components.LightConfigNightMode{}
-		if !plan.NightMode.Enable.IsNull() && !plan.NightMode.Enable.IsUnknown() {
-			v := plan.NightMode.Enable.ValueBool()
+		if !wNightMode.Enable.IsNull() && !wNightMode.Enable.IsUnknown() {
+			v := wNightMode.Enable.ValueBool()
 			cfg.NightMode.Enable = &v
 		}
-		if !plan.NightMode.Brightness.IsNull() && !plan.NightMode.Brightness.IsUnknown() {
-			v := plan.NightMode.Brightness.ValueFloat64()
+		if !wNightMode.Brightness.IsNull() && !wNightMode.Brightness.IsUnknown() {
+			v := wNightMode.Brightness.ValueFloat64()
 			cfg.NightMode.Brightness = &v
 		}
 	}
@@ -424,12 +515,16 @@ func (r *lightConfigResource) apply(ctx context.Context, plan lightConfigResourc
 		v := plan.ButtonFadeRate.ValueFloat64()
 		cfg.ButtonFadeRate = &v
 	}
-	if plan.ButtonPresets != nil {
+	if !plan.ButtonPresets.IsNull() && !plan.ButtonPresets.IsUnknown() {
+		var wButtonPresets lightConfigButtonPresetsModel
+		diags.Append(plan.ButtonPresets.As(ctx, &wButtonPresets, basetypes.ObjectAsOptions{})...)
 		cfg.ButtonPresets = &components.LightConfigButtonPresets{}
-		if plan.ButtonPresets.ButtonDoublepush != nil {
+		if !wButtonPresets.ButtonDoublepush.IsNull() && !wButtonPresets.ButtonDoublepush.IsUnknown() {
+			var wButtonPresetsButtonDoublepush lightConfigButtonPresetsButtonDoublepushModel
+			diags.Append(wButtonPresets.ButtonDoublepush.As(ctx, &wButtonPresetsButtonDoublepush, basetypes.ObjectAsOptions{})...)
 			cfg.ButtonPresets.ButtonDoublepush = &components.LightConfigButtonPresetsButtonDoublepush{}
-			if !plan.ButtonPresets.ButtonDoublepush.Brightness.IsNull() && !plan.ButtonPresets.ButtonDoublepush.Brightness.IsUnknown() {
-				v := plan.ButtonPresets.ButtonDoublepush.Brightness.ValueFloat64()
+			if !wButtonPresetsButtonDoublepush.Brightness.IsNull() && !wButtonPresetsButtonDoublepush.Brightness.IsUnknown() {
+				v := wButtonPresetsButtonDoublepush.Brightness.ValueFloat64()
 				cfg.ButtonPresets.ButtonDoublepush.Brightness = &v
 			}
 		}
@@ -450,18 +545,20 @@ func (r *lightConfigResource) apply(ctx context.Context, plan lightConfigResourc
 		v := plan.CurrentLimit.ValueFloat64()
 		cfg.CurrentLimit = &v
 	}
-	if plan.Warmup != nil {
+	if !plan.Warmup.IsNull() && !plan.Warmup.IsUnknown() {
+		var wWarmup lightConfigWarmupModel
+		diags.Append(plan.Warmup.As(ctx, &wWarmup, basetypes.ObjectAsOptions{})...)
 		cfg.Warmup = &components.LightConfigWarmup{}
-		if !plan.Warmup.Enable.IsNull() && !plan.Warmup.Enable.IsUnknown() {
-			v := plan.Warmup.Enable.ValueBool()
+		if !wWarmup.Enable.IsNull() && !wWarmup.Enable.IsUnknown() {
+			v := wWarmup.Enable.ValueBool()
 			cfg.Warmup.Enable = &v
 		}
-		if !plan.Warmup.Brightness.IsNull() && !plan.Warmup.Brightness.IsUnknown() {
-			v := plan.Warmup.Brightness.ValueFloat64()
+		if !wWarmup.Brightness.IsNull() && !wWarmup.Brightness.IsUnknown() {
+			v := wWarmup.Brightness.ValueFloat64()
 			cfg.Warmup.Brightness = &v
 		}
-		if !plan.Warmup.TimeMs.IsNull() && !plan.Warmup.TimeMs.IsUnknown() {
-			v := plan.Warmup.TimeMs.ValueFloat64()
+		if !wWarmup.TimeMs.IsNull() && !wWarmup.TimeMs.IsUnknown() {
+			v := wWarmup.TimeMs.ValueFloat64()
 			cfg.Warmup.TimeMs = &v
 		}
 	}

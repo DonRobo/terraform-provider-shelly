@@ -76,12 +76,18 @@ func (r *wsConfigResource) get(ctx context.Context, m *wsConfigResourceModel, di
 	}
 	if got.Enable != nil {
 		m.Enable = types.BoolValue(*got.Enable)
+	} else if m.Enable.IsUnknown() {
+		m.Enable = types.BoolNull()
 	}
 	if got.Server != nil {
 		m.Server = types.StringValue(*got.Server)
+	} else if m.Server.IsUnknown() {
+		m.Server = types.StringNull()
 	}
 	if got.SSLCA != nil {
 		m.SSLCA = types.StringValue(*got.SSLCA)
+	} else if m.SSLCA.IsUnknown() {
+		m.SSLCA = types.StringNull()
 	}
 }
 
