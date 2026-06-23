@@ -19,10 +19,15 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/DonRobo/shelly-go/gen"
 )
+
+// floatLit renders a documented numeric bound as a minimal Go float literal
+// (no scientific notation), e.g. 0.5, 30, 2147483647.
+func floatLit(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 
 const outDir = "internal/provider"
 
@@ -335,6 +340,16 @@ func emitSchemaAttrs(b *strings.Builder, n *tnode, imp *imports) {
 				quoted[i] = fmt.Sprintf("%q", e)
 			}
 			fmt.Fprintf(b, "Validators: []validator.String{stringvalidator.OneOf(%s)},\n", strings.Join(quoted, ", "))
+		}
+		if !ro && (f.Type == "number" || f.Type == "integer") && f.Min != nil && f.Max != nil {
+			imp.add("github.com/hashicorp/terraform-plugin-framework/schema/validator")
+			if f.Type == "integer" {
+				imp.add("github.com/hashicorp/terraform-plugin-framework-validators/int64validator")
+				fmt.Fprintf(b, "Validators: []validator.Int64{int64validator.Between(%d, %d)},\n", int64(*f.Min), int64(*f.Max))
+			} else {
+				imp.add("github.com/hashicorp/terraform-plugin-framework-validators/float64validator")
+				fmt.Fprintf(b, "Validators: []validator.Float64{float64validator.Between(%s, %s)},\n", floatLit(*f.Min), floatLit(*f.Max))
+			}
 		}
 		imp.add("github.com/hashicorp/terraform-plugin-framework/resource/schema/" + ti.PlanPkg)
 		fmt.Fprintf(b, "PlanModifiers: []planmodifier.%s{%s.UseStateForUnknown()},\n},\n", ti.PlanKnd, ti.PlanPkg)

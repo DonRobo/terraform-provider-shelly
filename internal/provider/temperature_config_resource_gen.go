@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"resty.dev/v3"
 	"strconv"
@@ -55,12 +57,14 @@ func (r *temperatureConfigResource) Schema(_ context.Context, _ resource.SchemaR
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Temperature report threshold in Celsius. Accepted range is device-specific, default [0.5..5.0]C unless specified otherwise",
+				Validators:          []validator.Float64{float64validator.Between(0.5, 5)},
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
 			"offset_c": schema.Float64Attribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Offset in Celsius to be applied to the measured temperature. Accepted range is device-specific, default [-50.0 .. 50.0] unless specified otherwise",
+				Validators:          []validator.Float64{float64validator.Between(-50, 50)},
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
 		},
