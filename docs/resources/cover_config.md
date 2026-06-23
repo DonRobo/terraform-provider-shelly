@@ -24,7 +24,10 @@ description: |-
 
 - `current_limit` (Number) Amperes, a limit that must be exceeded to trigger an overcurrent error
 - `in_locked` (Boolean) If True, all changes to physical inputs are ignored, regardless of mode.
+- `in_mode` (String) One of single, dual or detached, only present if there is at least one input associated with the Cover instance: single, dual, detached.
 - `initial_state` (String) Defines Cover target state on power-on, one of open (Cover will fully open), closed (Cover will fully close) or stopped (Cover will not change its position)
+- `invert_directions` (Boolean) Defines the motor rotation for open and close directions (changing this parameter requires a reboot): false, true.
+- `maintenance_mode` (Boolean) Can be used to temporarily freeze all motions for maintenance: false, true.
 - `maxtime_close` (Number) Default timeout after which Cover will stop moving in a close direction
 - `maxtime_open` (Number) Default timeout after which Cover will stop moving in open direction
 - `motor` (Attributes) (see [below for nested schema](#nestedatt--motor))
@@ -33,6 +36,7 @@ description: |-
 - `power_limit` (Number) Watts, a limit that must be exceeded to trigger an overpower error
 - `safety_switch` (Attributes) (see [below for nested schema](#nestedatt--safety_switch))
 - `slat` (Attributes) (see [below for nested schema](#nestedatt--slat))
+- `swap_inputs` (Boolean) Defines whether the functions of the two inputs are swapped. Only present if there are two inputs associated with the Cover instance. Documented without a type by Shelly.
 - `undervoltage_limit` (Number) Volts, a limit that must be subceeded to trigger an undervoltage error
 - `voltage_limit` (Number) Volts, a limit that must be exceeded to trigger an overvoltage error
 
@@ -50,6 +54,7 @@ Optional:
 
 Optional:
 
+- `action` (String) The recovery action that should be performed if the safety switch is engaged while moving in a monitored direction, one of the: stop, reverse.
 - `direction` (String) The direction of motion for which the safety switch should be monitored, one of open, close, both
 - `enable` (Boolean) true when obstruction detection is enabled, false otherwise
 - `holdoff` (Number) Seconds, time to wait after Cover starts moving before obstruction detection is activated (to avoid false detections because of the initial power consumption spike)
@@ -61,6 +66,8 @@ Optional:
 
 Optional:
 
+- `action` (String) The recovery action which should be performed if the safety switch is engaged while moving in a monitored direction, is one of the: stop, reverse, pause.
+- `allowed_move` (String) Allowed movement direction when the safety switch is engaged while moving in a monitored direction: null, reverse.
 - `direction` (String) The direction of motion for which the safety switch should be monitored, one of open, close, both
 - `enable` (Boolean) true when the safety switch is enabled, false otherwise
 

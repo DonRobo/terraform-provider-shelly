@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/DonRobo/shelly-go/components"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"resty.dev/v3"
 	"strconv"
@@ -38,13 +40,16 @@ type coverConfigMotorModel struct {
 type coverConfigObstructionDetectionModel struct {
 	Enable    types.Bool    `tfsdk:"enable"`
 	Direction types.String  `tfsdk:"direction"`
+	Action    types.String  `tfsdk:"action"`
 	PowerThr  types.Float64 `tfsdk:"power_thr"`
 	Holdoff   types.Float64 `tfsdk:"holdoff"`
 }
 
 type coverConfigSafetySwitchModel struct {
-	Enable    types.Bool   `tfsdk:"enable"`
-	Direction types.String `tfsdk:"direction"`
+	Enable      types.Bool   `tfsdk:"enable"`
+	Direction   types.String `tfsdk:"direction"`
+	Action      types.String `tfsdk:"action"`
+	AllowedMove types.String `tfsdk:"allowed_move"`
 }
 
 type coverConfigSlatModel struct {
@@ -60,6 +65,7 @@ type coverConfigResourceModel struct {
 	IP                   types.String                          `tfsdk:"ip"`
 	ID                   types.Int64                           `tfsdk:"id"`
 	Name                 types.String                          `tfsdk:"name"`
+	InMode               types.String                          `tfsdk:"in_mode"`
 	InLocked             types.Bool                            `tfsdk:"in_locked"`
 	InitialState         types.String                          `tfsdk:"initial_state"`
 	PowerLimit           types.Float64                         `tfsdk:"power_limit"`
@@ -69,9 +75,12 @@ type coverConfigResourceModel struct {
 	Motor                *coverConfigMotorModel                `tfsdk:"motor"`
 	MaxtimeOpen          types.Float64                         `tfsdk:"maxtime_open"`
 	MaxtimeClose         types.Float64                         `tfsdk:"maxtime_close"`
+	InvertDirections     types.Bool                            `tfsdk:"invert_directions"`
+	MaintenanceMode      types.Bool                            `tfsdk:"maintenance_mode"`
 	ObstructionDetection *coverConfigObstructionDetectionModel `tfsdk:"obstruction_detection"`
 	SafetySwitch         *coverConfigSafetySwitchModel         `tfsdk:"safety_switch"`
 	Slat                 *coverConfigSlatModel                 `tfsdk:"slat"`
+	SwapInputs           types.Bool                            `tfsdk:"swap_inputs"`
 }
 
 func (r *coverConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -87,6 +96,13 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Name of the Cover component instance",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"in_mode": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "One of single, dual or detached, only present if there is at least one input associated with the Cover instance: single, dual, detached.",
+				Validators:          []validator.String{stringvalidator.OneOf("single", "dual", "detached")},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"in_locked": schema.BoolAttribute{
@@ -156,6 +172,18 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				MarkdownDescription: "Default timeout after which Cover will stop moving in a close direction",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"invert_directions": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Defines the motor rotation for open and close directions (changing this parameter requires a reboot): false, true.",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"maintenance_mode": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Can be used to temporarily freeze all motions for maintenance: false, true.",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
 			"obstruction_detection": schema.SingleNestedAttribute{
 				Optional:      true,
 				Computed:      true,
@@ -171,6 +199,13 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "The direction of motion for which the safety switch should be monitored, one of open, close, both",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"action": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "The recovery action that should be performed if the safety switch is engaged while moving in a monitored direction, one of the: stop, reverse.",
+						Validators:          []validator.String{stringvalidator.OneOf("stop", "reverse")},
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"power_thr": schema.Float64Attribute{
@@ -202,6 +237,20 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "The direction of motion for which the safety switch should be monitored, one of open, close, both",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"action": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "The recovery action which should be performed if the safety switch is engaged while moving in a monitored direction, is one of the: stop, reverse, pause.",
+						Validators:          []validator.String{stringvalidator.OneOf("stop", "reverse", "pause")},
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+					},
+					"allowed_move": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Allowed movement direction when the safety switch is engaged while moving in a monitored direction: null, reverse.",
+						Validators:          []validator.String{stringvalidator.OneOf("reverse")},
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 				},
@@ -249,6 +298,12 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 					},
 				},
 			},
+			"swap_inputs": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Defines whether the functions of the two inputs are swapped. Only present if there are two inputs associated with the Cover instance. Documented without a type by Shelly.",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
@@ -264,6 +319,9 @@ func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceMod
 	}
 	if got.Name != nil {
 		m.Name = types.StringValue(*got.Name)
+	}
+	if got.InMode != nil {
+		m.InMode = types.StringValue(*got.InMode)
 	}
 	if got.InLocked != nil {
 		m.InLocked = types.BoolValue(*got.InLocked)
@@ -300,6 +358,12 @@ func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceMod
 	if got.MaxtimeClose != nil {
 		m.MaxtimeClose = types.Float64Value(*got.MaxtimeClose)
 	}
+	if got.InvertDirections != nil {
+		m.InvertDirections = types.BoolValue(*got.InvertDirections)
+	}
+	if got.MaintenanceMode != nil {
+		m.MaintenanceMode = types.BoolValue(*got.MaintenanceMode)
+	}
 	if got.ObstructionDetection != nil {
 		if m.ObstructionDetection == nil {
 			m.ObstructionDetection = &coverConfigObstructionDetectionModel{}
@@ -309,6 +373,9 @@ func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceMod
 		}
 		if got.ObstructionDetection.Direction != nil {
 			m.ObstructionDetection.Direction = types.StringValue(*got.ObstructionDetection.Direction)
+		}
+		if got.ObstructionDetection.Action != nil {
+			m.ObstructionDetection.Action = types.StringValue(*got.ObstructionDetection.Action)
 		}
 		if got.ObstructionDetection.PowerThr != nil {
 			m.ObstructionDetection.PowerThr = types.Float64Value(*got.ObstructionDetection.PowerThr)
@@ -326,6 +393,12 @@ func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceMod
 		}
 		if got.SafetySwitch.Direction != nil {
 			m.SafetySwitch.Direction = types.StringValue(*got.SafetySwitch.Direction)
+		}
+		if got.SafetySwitch.Action != nil {
+			m.SafetySwitch.Action = types.StringValue(*got.SafetySwitch.Action)
+		}
+		if got.SafetySwitch.AllowedMove != nil {
+			m.SafetySwitch.AllowedMove = types.StringValue(*got.SafetySwitch.AllowedMove)
 		}
 	}
 	if got.Slat != nil {
@@ -351,6 +424,9 @@ func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceMod
 			m.Slat.PreciseCtl = types.BoolValue(*got.Slat.PreciseCtl)
 		}
 	}
+	if got.SwapInputs != nil {
+		m.SwapInputs = types.BoolValue(*got.SwapInputs)
+	}
 }
 
 func (r *coverConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -372,6 +448,10 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
 		v := plan.Name.ValueString()
 		cfg.Name = &v
+	}
+	if !plan.InMode.IsNull() && !plan.InMode.IsUnknown() {
+		v := plan.InMode.ValueString()
+		cfg.InMode = &v
 	}
 	if !plan.InLocked.IsNull() && !plan.InLocked.IsUnknown() {
 		v := plan.InLocked.ValueBool()
@@ -416,6 +496,14 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 		v := plan.MaxtimeClose.ValueFloat64()
 		cfg.MaxtimeClose = &v
 	}
+	if !plan.InvertDirections.IsNull() && !plan.InvertDirections.IsUnknown() {
+		v := plan.InvertDirections.ValueBool()
+		cfg.InvertDirections = &v
+	}
+	if !plan.MaintenanceMode.IsNull() && !plan.MaintenanceMode.IsUnknown() {
+		v := plan.MaintenanceMode.ValueBool()
+		cfg.MaintenanceMode = &v
+	}
 	if plan.ObstructionDetection != nil {
 		cfg.ObstructionDetection = &components.CoverConfigObstructionDetection{}
 		if !plan.ObstructionDetection.Enable.IsNull() && !plan.ObstructionDetection.Enable.IsUnknown() {
@@ -425,6 +513,10 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 		if !plan.ObstructionDetection.Direction.IsNull() && !plan.ObstructionDetection.Direction.IsUnknown() {
 			v := plan.ObstructionDetection.Direction.ValueString()
 			cfg.ObstructionDetection.Direction = &v
+		}
+		if !plan.ObstructionDetection.Action.IsNull() && !plan.ObstructionDetection.Action.IsUnknown() {
+			v := plan.ObstructionDetection.Action.ValueString()
+			cfg.ObstructionDetection.Action = &v
 		}
 		if !plan.ObstructionDetection.PowerThr.IsNull() && !plan.ObstructionDetection.PowerThr.IsUnknown() {
 			v := plan.ObstructionDetection.PowerThr.ValueFloat64()
@@ -444,6 +536,14 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 		if !plan.SafetySwitch.Direction.IsNull() && !plan.SafetySwitch.Direction.IsUnknown() {
 			v := plan.SafetySwitch.Direction.ValueString()
 			cfg.SafetySwitch.Direction = &v
+		}
+		if !plan.SafetySwitch.Action.IsNull() && !plan.SafetySwitch.Action.IsUnknown() {
+			v := plan.SafetySwitch.Action.ValueString()
+			cfg.SafetySwitch.Action = &v
+		}
+		if !plan.SafetySwitch.AllowedMove.IsNull() && !plan.SafetySwitch.AllowedMove.IsUnknown() {
+			v := plan.SafetySwitch.AllowedMove.ValueString()
+			cfg.SafetySwitch.AllowedMove = &v
 		}
 	}
 	if plan.Slat != nil {
@@ -472,6 +572,10 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 			v := plan.Slat.PreciseCtl.ValueBool()
 			cfg.Slat.PreciseCtl = &v
 		}
+	}
+	if !plan.SwapInputs.IsNull() && !plan.SwapInputs.IsUnknown() {
+		v := plan.SwapInputs.ValueBool()
+		cfg.SwapInputs = &v
 	}
 	client := resty.New()
 	defer client.Close()

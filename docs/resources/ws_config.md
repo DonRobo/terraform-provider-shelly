@@ -23,3 +23,4 @@ description: |-
 
 - `enable` (Boolean) true if websocket outbound connection is enabled, false otherwise
 - `server` (String) Name of the server to which the device is connected. When prefixed with wss:// a TLS socket will be used
+- `ssl_ca` (String) Type of the TCP sockets

@@ -21,10 +21,13 @@ description: |-
 
 ### Optional
 
+- `client_id` (String) Identifies each MQTT client that connects to an MQTT brokers
 - `enable` (Boolean) True if MQTT connection is enabled, false otherwise
 - `enable_control` (Boolean) Enable the MQTT control feature. Defalut value: true
 - `rpc_ntf` (Boolean) Enables RPC notifications (NotifyStatus and NotifyEvent) to be published on <device_id|topic_prefix>/events/rpc (<topic_prefix> when a custom prefix is set, <device_id> otherwise). Default value: true.
 - `server` (String) Host name of the MQTT server. Can be followed by port number - host:port
+- `ssl_ca` (String) Type of the TCP sockets
 - `status_ntf` (Boolean) Enables publishing the complete component status on <device_id|topic_prefix>/status/<component>:<id> (<topic_prefix> when a custom prefix is set, <device_id> otherwise). The complete status will be published if a signifficant change occurred. Default value: false
+- `topic_prefix` (String) Prefix of the topics on which device publish/subscribe. Limited to 300 characters. Could not start with $ and #, +, %, ? are not allowed.
 - `use_client_cert` (Boolean) Enable or diable usage of client certifactes to use MQTT with encription, default: false
 - `user` (String) Username
