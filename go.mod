@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/stretchr/testify v1.11.1
-	resty.dev/v3 v3.0.0-rc.2
+	resty.dev/v3 v3.0.0-rc.3
 )
 
 require (
