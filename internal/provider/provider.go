@@ -46,7 +46,9 @@ func (p *ShellyProvider) Configure(ctx context.Context, req provider.ConfigureRe
 }
 
 func (p *ShellyProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return generatedConfigResources()
+	// Hand-written resources (not emitted by internal/provider/gen) go here,
+	// alongside the generated config resources - see webhook_resource.go.
+	return append(generatedConfigResources(), NewWebhookResource)
 }
 
 func (p *ShellyProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
