@@ -5,6 +5,10 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
+
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/float64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -22,8 +26,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
-	"strconv"
-	"strings"
 )
 
 var (
@@ -69,6 +71,8 @@ type coverConfigResourceModel struct {
 	ID                   types.Int64   `tfsdk:"id"`
 	Name                 types.String  `tfsdk:"name"`
 	InMode               types.String  `tfsdk:"in_mode"`
+	ButtonType           types.String  `tfsdk:"button_type"`
+	ButtonReverse        types.Bool    `tfsdk:"button_reverse"`
 	InLocked             types.Bool    `tfsdk:"in_locked"`
 	InitialState         types.String  `tfsdk:"initial_state"`
 	PowerLimit           types.Float64 `tfsdk:"power_limit"`
@@ -84,6 +88,7 @@ type coverConfigResourceModel struct {
 	SafetySwitch         types.Object  `tfsdk:"safety_switch"`
 	Slat                 types.Object  `tfsdk:"slat"`
 	SwapInputs           types.Bool    `tfsdk:"swap_inputs"`
+	Positioning          types.Bool    `tfsdk:"positioning"`
 }
 
 var coverConfigMotorAttrTypes = map[string]attr.Type{
@@ -136,6 +141,19 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				MarkdownDescription: "One of single, dual or detached, only present if there is at least one input associated with the Cover instance: single, dual, detached.",
 				Validators:          []validator.String{stringvalidator.OneOf("single", "dual", "detached")},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"button_type": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Type of the button connected to the input: toggle, edge, detached, action, momentary. (Gen1 roller mode: firmware-fixed to toggle)",
+				Validators:          []validator.String{stringvalidator.OneOf("toggle", "edge", "detached", "action", "momentary")},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"button_reverse": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "If True, reverse the button direction (invert open/close actions for button input)",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"in_locked": schema.BoolAttribute{
 				Optional:            true,
@@ -339,11 +357,139 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 				MarkdownDescription: "Defines whether the functions of the two inputs are swapped. Only present if there are two inputs associated with the Cover instance.",
 				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
+			"positioning": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Enable/disable positioning mode for precise cover position control",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
 
 func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(m.IP.ValueString())
+	if version.Generation == 1 {
+		got, err := gen1GetRollerSettings(m.IP.ValueString(), int(m.ID.ValueInt64()))
+		if err != nil {
+			diags.AddError("Failed to read Gen1 cover config", err.Error())
+			return
+		}
+		m.Name = types.StringNull()
+		if got.InputMode != nil {
+			m.InMode = types.StringValue(mapGen1RollerInputToInMode(*got.InputMode))
+		} else {
+			m.InMode = types.StringNull()
+		}
+		if got.ButtonType != nil {
+			m.ButtonType = types.StringValue(*got.ButtonType)
+		} else {
+			m.ButtonType = types.StringNull()
+		}
+		if got.ButtonReverse != nil {
+			m.ButtonReverse = types.BoolValue(*got.ButtonReverse != 0)
+		} else {
+			m.ButtonReverse = types.BoolNull()
+		}
+		m.InLocked = types.BoolNull()
+		if got.DefaultState != nil {
+			m.InitialState = types.StringValue(mapGen1RollerDefaultStateToInitialState(*got.DefaultState))
+		} else {
+			m.InitialState = types.StringNull()
+		}
+		m.PowerLimit = types.Float64Null()
+		m.VoltageLimit = types.Float64Null()
+		m.UndervoltageLimit = types.Float64Null()
+		m.CurrentLimit = types.Float64Null()
+		m.Motor = types.ObjectNull(coverConfigMotorAttrTypes)
+		if got.MaxtimeOpen != nil {
+			m.MaxtimeOpen = types.Float64Value(*got.MaxtimeOpen)
+		} else {
+			m.MaxtimeOpen = types.Float64Null()
+		}
+		if got.MaxtimeClose != nil {
+			m.MaxtimeClose = types.Float64Value(*got.MaxtimeClose)
+		} else {
+			m.MaxtimeClose = types.Float64Null()
+		}
+		if got.Swap != nil {
+			m.InvertDirections = types.BoolValue(*got.Swap)
+		} else {
+			m.InvertDirections = types.BoolNull()
+		}
+		m.MaintenanceMode = types.BoolNull()
+
+		sObstruction := coverConfigObstructionDetectionModel{
+			Enable:    types.BoolNull(),
+			Direction: types.StringNull(),
+			Action:    types.StringNull(),
+			PowerThr:  types.Float64Null(),
+			Holdoff:   types.Float64Null(),
+		}
+		if got.ObstacleMode != nil {
+			mode := strings.ToLower(*got.ObstacleMode)
+			sObstruction.Enable = types.BoolValue(mode != "disabled")
+			switch mode {
+			case "while_opening":
+				sObstruction.Direction = types.StringValue("open")
+			case "while_closing":
+				sObstruction.Direction = types.StringValue("close")
+			default:
+				sObstruction.Direction = types.StringValue("both")
+			}
+		}
+		if got.ObstacleAction != nil {
+			sObstruction.Action = types.StringValue(*got.ObstacleAction)
+		}
+		if got.ObstaclePower != nil {
+			sObstruction.PowerThr = types.Float64Value(*got.ObstaclePower)
+		}
+		if got.ObstacleDelay != nil {
+			sObstruction.Holdoff = types.Float64Value(*got.ObstacleDelay)
+		}
+		oObstruction, dObstruction := types.ObjectValueFrom(ctx, coverConfigObstructionDetectionAttrTypes, sObstruction)
+		diags.Append(dObstruction...)
+		m.ObstructionDetection = oObstruction
+
+		sSafety := coverConfigSafetySwitchModel{
+			Enable:      types.BoolNull(),
+			Direction:   types.StringNull(),
+			Action:      types.StringNull(),
+			AllowedMove: types.StringNull(),
+		}
+		if got.SafetyMode != nil {
+			mode := strings.ToLower(*got.SafetyMode)
+			sSafety.Enable = types.BoolValue(mode != "disabled")
+			switch mode {
+			case "while_opening":
+				sSafety.Direction = types.StringValue("open")
+			case "while_closing":
+				sSafety.Direction = types.StringValue("close")
+			default:
+				sSafety.Direction = types.StringValue("both")
+			}
+		}
+		if got.SafetyAction != nil {
+			sSafety.Action = types.StringValue(*got.SafetyAction)
+		}
+		oSafety, dSafety := types.ObjectValueFrom(ctx, coverConfigSafetySwitchAttrTypes, sSafety)
+		diags.Append(dSafety...)
+		m.SafetySwitch = oSafety
+
+		m.Slat = types.ObjectNull(coverConfigSlatAttrTypes)
+		if got.SwapInputs != nil {
+			m.SwapInputs = types.BoolValue(*got.SwapInputs)
+		} else {
+			m.SwapInputs = types.BoolNull()
+		}
+		if got.Positioning != nil {
+			m.Positioning = types.BoolValue(*got.Positioning)
+		} else {
+			m.Positioning = types.BoolNull()
+		}
+		return
+	}
+
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + m.IP.ValueString())
@@ -562,6 +708,116 @@ func (r *coverConfigResource) Read(ctx context.Context, req resource.ReadRequest
 }
 
 func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourceModel, diags *diag.Diagnostics) {
+	ip := plan.IP.ValueString()
+	version := DetectDeviceVersion(ip)
+	if version.Generation == 1 {
+		q := url.Values{}
+		if !plan.InMode.IsNull() && !plan.InMode.IsUnknown() {
+			inMode := strings.ToLower(plan.InMode.ValueString())
+			if inMode == "detached" {
+				diags.AddWarning("Gen1 partial support", "`in_mode = \"detached\"` is not supported for Gen1 roller mode on this device. Keeping existing input mode.")
+			} else {
+				q.Set("input_mode", mapInModeToGen1RollerInput(inMode))
+			}
+		}
+		if !plan.ButtonType.IsNull() && !plan.ButtonType.IsUnknown() {
+			q.Set("btn_type", plan.ButtonType.ValueString())
+		}
+		if !plan.ButtonReverse.IsNull() && !plan.ButtonReverse.IsUnknown() {
+			val := "0"
+			if plan.ButtonReverse.ValueBool() {
+				val = "1"
+			}
+			q.Set("btn_reverse", val)
+		}
+		if !plan.InitialState.IsNull() && !plan.InitialState.IsUnknown() {
+			q.Set("default_state", mapInitialStateToGen1RollerDefaultState(plan.InitialState.ValueString()))
+		}
+		if !plan.MaxtimeOpen.IsNull() && !plan.MaxtimeOpen.IsUnknown() {
+			q.Set("maxtime_open", strconv.FormatFloat(plan.MaxtimeOpen.ValueFloat64(), 'f', -1, 64))
+		}
+		if !plan.MaxtimeClose.IsNull() && !plan.MaxtimeClose.IsUnknown() {
+			q.Set("maxtime_close", strconv.FormatFloat(plan.MaxtimeClose.ValueFloat64(), 'f', -1, 64))
+		}
+		if !plan.InvertDirections.IsNull() && !plan.InvertDirections.IsUnknown() {
+			q.Set("swap", strconv.FormatBool(plan.InvertDirections.ValueBool()))
+		}
+		if !plan.SwapInputs.IsNull() && !plan.SwapInputs.IsUnknown() {
+			q.Set("swap_inputs", strconv.FormatBool(plan.SwapInputs.ValueBool()))
+		}
+		if !plan.Positioning.IsNull() && !plan.Positioning.IsUnknown() {
+			q.Set("positioning", strconv.FormatBool(plan.Positioning.ValueBool()))
+		}
+		if !plan.ObstructionDetection.IsNull() && !plan.ObstructionDetection.IsUnknown() {
+			var wObstruction coverConfigObstructionDetectionModel
+			diags.Append(plan.ObstructionDetection.As(ctx, &wObstruction, basetypes.ObjectAsOptions{})...)
+			if !wObstruction.Enable.IsNull() && !wObstruction.Enable.IsUnknown() {
+				if !wObstruction.Enable.ValueBool() {
+					q.Set("obstacle_mode", "disabled")
+				} else {
+					direction := "both"
+					if !wObstruction.Direction.IsNull() && !wObstruction.Direction.IsUnknown() {
+						direction = strings.ToLower(wObstruction.Direction.ValueString())
+					}
+					switch direction {
+					case "open":
+						q.Set("obstacle_mode", "while_opening")
+					case "close":
+						q.Set("obstacle_mode", "while_closing")
+					default:
+						q.Set("obstacle_mode", "while_moving")
+					}
+				}
+			}
+			if !wObstruction.Action.IsNull() && !wObstruction.Action.IsUnknown() {
+				q.Set("obstacle_action", wObstruction.Action.ValueString())
+			}
+			if !wObstruction.PowerThr.IsNull() && !wObstruction.PowerThr.IsUnknown() {
+				q.Set("obstacle_power", strconv.FormatFloat(wObstruction.PowerThr.ValueFloat64(), 'f', -1, 64))
+			}
+			if !wObstruction.Holdoff.IsNull() && !wObstruction.Holdoff.IsUnknown() {
+				q.Set("obstacle_delay", strconv.FormatFloat(wObstruction.Holdoff.ValueFloat64(), 'f', -1, 64))
+			}
+		}
+		if !plan.SafetySwitch.IsNull() && !plan.SafetySwitch.IsUnknown() {
+			var wSafety coverConfigSafetySwitchModel
+			diags.Append(plan.SafetySwitch.As(ctx, &wSafety, basetypes.ObjectAsOptions{})...)
+			if !wSafety.Enable.IsNull() && !wSafety.Enable.IsUnknown() {
+				if !wSafety.Enable.ValueBool() {
+					q.Set("safety_mode", "disabled")
+				} else {
+					direction := "both"
+					if !wSafety.Direction.IsNull() && !wSafety.Direction.IsUnknown() {
+						direction = strings.ToLower(wSafety.Direction.ValueString())
+					}
+					switch direction {
+					case "open":
+						q.Set("safety_mode", "while_opening")
+					case "close":
+						q.Set("safety_mode", "while_closing")
+					default:
+						q.Set("safety_mode", "while_moving")
+					}
+				}
+			}
+			if !wSafety.Action.IsNull() && !wSafety.Action.IsUnknown() {
+				q.Set("safety_action", wSafety.Action.ValueString())
+			}
+			if !wSafety.AllowedMove.IsNull() && !wSafety.AllowedMove.IsUnknown() {
+				diags.AddWarning("Gen1 partial support", "`safety_switch.allowed_move` is not supported on Gen1 and was ignored.")
+			}
+		}
+
+		if (!plan.Name.IsNull() && !plan.Name.IsUnknown()) || (!plan.InLocked.IsNull() && !plan.InLocked.IsUnknown()) || (!plan.PowerLimit.IsNull() && !plan.PowerLimit.IsUnknown()) || (!plan.VoltageLimit.IsNull() && !plan.VoltageLimit.IsUnknown()) || (!plan.UndervoltageLimit.IsNull() && !plan.UndervoltageLimit.IsUnknown()) || (!plan.CurrentLimit.IsNull() && !plan.CurrentLimit.IsUnknown()) || (!plan.Motor.IsNull() && !plan.Motor.IsUnknown()) || (!plan.MaintenanceMode.IsNull() && !plan.MaintenanceMode.IsUnknown()) || (!plan.Slat.IsNull() && !plan.Slat.IsUnknown()) {
+			diags.AddWarning("Gen1 partial support", "Some cover_config fields are not supported on Gen1 and were ignored.")
+		}
+
+		if err := gen1SetRollerSettings(ip, int(plan.ID.ValueInt64()), q); err != nil {
+			diags.AddError("Failed to set Gen1 cover config", err.Error())
+		}
+		return
+	}
+
 	var cfg components.CoverConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {

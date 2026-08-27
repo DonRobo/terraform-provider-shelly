@@ -4,6 +4,9 @@ package provider
 
 import (
 	"context"
+	"net/url"
+	"strconv"
+
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -83,13 +86,20 @@ type sysConfigSntpModel struct {
 }
 
 type sysConfigResourceModel struct {
-	IP       types.String  `tfsdk:"ip"`
-	Device   types.Object  `tfsdk:"device"`
-	Location types.Object  `tfsdk:"location"`
-	Debug    types.Object  `tfsdk:"debug"`
-	RPCUdp   types.Object  `tfsdk:"rpc_udp"`
-	Sntp     types.Object  `tfsdk:"sntp"`
-	CfgRev   types.Float64 `tfsdk:"cfg_rev"`
+	IP                     types.String  `tfsdk:"ip"`
+	Device                 types.Object  `tfsdk:"device"`
+	Location               types.Object  `tfsdk:"location"`
+	Debug                  types.Object  `tfsdk:"debug"`
+	RPCUdp                 types.Object  `tfsdk:"rpc_udp"`
+	Sntp                   types.Object  `tfsdk:"sntp"`
+	CfgRev                 types.Float64 `tfsdk:"cfg_rev"`
+	AllowCrossOrigin       types.Bool    `tfsdk:"allow_cross_origin"`
+	LedStatusDisable       types.Bool    `tfsdk:"led_status_disable"`
+	LongpushTime           types.Float64 `tfsdk:"longpush_time"`
+	TzAutodetect           types.Bool    `tfsdk:"tz_autodetect"`
+	FavoritesEnabled       types.Bool    `tfsdk:"favorites_enabled"`
+	ResetByPowerCycles     types.Bool    `tfsdk:"reset_by_power_cycles"`
+	FactoryResetFromSwitch types.Bool    `tfsdk:"factory_reset_from_switch"`
 }
 
 var sysConfigDeviceAttrTypes = map[string]attr.Type{
@@ -339,11 +349,157 @@ func (r *sysConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				MarkdownDescription: "Configuration revision. This number will be incremented for every configuration change of a device component. If the new config value is the same as the old one there will be no change of this property. Can not be modified explicitly by a call to Sys.SetConfig",
 				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
 			},
+			"allow_cross_origin": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Enable CORS support for cross-origin requests (Gen1 only).",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"led_status_disable": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Disable status LED indication (Gen1 only).",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"longpush_time": schema.Float64Attribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Long press threshold in milliseconds (Gen1 only).",
+				PlanModifiers:       []planmodifier.Float64{float64planmodifier.UseStateForUnknown()},
+			},
+			"tz_autodetect": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Enable timezone auto-detection based on WAN IP geolocation (Gen1 only).",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"favorites_enabled": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Enable favorites support in device UI/API (Gen1 only).",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"reset_by_power_cycles": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Enable reset by 5 quick successive power cycles (Gen1: maps to `pon_wifi_reset`).",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"factory_reset_from_switch": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Enable factory reset from switch input (Gen1 only).",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
 
 func (r *sysConfigResource) get(ctx context.Context, m *sysConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(m.IP.ValueString())
+	if version.Generation == 1 {
+		settings, err := gen1GetSettings(m.IP.ValueString())
+		if err != nil {
+			diags.AddError("Failed to read Gen1 config", err.Error())
+			return
+		}
+
+		sDevice := sysConfigDeviceModel{
+			Name:                     types.StringNull(),
+			EcoMode:                  types.BoolNull(),
+			MAC:                      types.StringNull(),
+			FWID:                     types.StringNull(),
+			Profile:                  types.StringNull(),
+			Discoverable:             types.BoolNull(),
+			AddonType:                types.StringNull(),
+			SysBtnToggle:             types.BoolNull(),
+			TLSCheckCertValidityTime: types.BoolNull(),
+			EnhancedSecurity:         types.BoolNull(),
+		}
+		if settings.Name != "" {
+			sDevice.Name = types.StringValue(settings.Name)
+		}
+		if settings.Device.MAC != "" {
+			sDevice.MAC = types.StringValue(settings.Device.MAC)
+		}
+		if settings.Fw != "" {
+			sDevice.FWID = types.StringValue(settings.Fw)
+		}
+		if settings.Discoverable != nil {
+			sDevice.Discoverable = types.BoolValue(*settings.Discoverable)
+		}
+		if settings.EcoModeEnabled != nil {
+			sDevice.EcoMode = types.BoolValue(*settings.EcoModeEnabled)
+		}
+		oDevice, dDevice := types.ObjectValueFrom(ctx, sysConfigDeviceAttrTypes, sDevice)
+		diags.Append(dDevice...)
+		m.Device = oDevice
+
+		sLocation := sysConfigLocationModel{
+			Tz:  types.StringNull(),
+			Lat: types.Float64Null(),
+			Lon: types.Float64Null(),
+		}
+		if settings.Timezone != "" {
+			sLocation.Tz = types.StringValue(settings.Timezone)
+		}
+		sLocation.Lat = types.Float64Value(settings.Lat)
+		sLocation.Lon = types.Float64Value(settings.Lng)
+		oLocation, dLocation := types.ObjectValueFrom(ctx, sysConfigLocationAttrTypes, sLocation)
+		diags.Append(dLocation...)
+		m.Location = oLocation
+
+		sSntp := sysConfigSntpModel{Server: types.StringNull()}
+		if settings.Sntp.Server != "" {
+			sSntp.Server = types.StringValue(settings.Sntp.Server)
+		}
+		oSntp, dSntp := types.ObjectValueFrom(ctx, sysConfigSntpAttrTypes, sSntp)
+		diags.Append(dSntp...)
+		m.Sntp = oSntp
+
+		if settings.AllowCrossOrigin != nil {
+			m.AllowCrossOrigin = types.BoolValue(*settings.AllowCrossOrigin)
+		} else {
+			m.AllowCrossOrigin = types.BoolNull()
+		}
+		if settings.LedStatusDisable != nil {
+			m.LedStatusDisable = types.BoolValue(*settings.LedStatusDisable)
+		} else {
+			m.LedStatusDisable = types.BoolNull()
+		}
+		if settings.LongpushTime != nil {
+			m.LongpushTime = types.Float64Value(*settings.LongpushTime)
+		} else {
+			m.LongpushTime = types.Float64Null()
+		}
+		if settings.TzAutodetect != nil {
+			m.TzAutodetect = types.BoolValue(*settings.TzAutodetect)
+		} else {
+			m.TzAutodetect = types.BoolNull()
+		}
+		if settings.FavoritesEnabled != nil {
+			m.FavoritesEnabled = types.BoolValue(*settings.FavoritesEnabled)
+		} else {
+			m.FavoritesEnabled = types.BoolNull()
+		}
+
+		if settings.PonWifiReset != nil {
+			m.ResetByPowerCycles = types.BoolValue(*settings.PonWifiReset)
+		} else {
+			m.ResetByPowerCycles = types.BoolNull()
+		}
+		if settings.FactoryResetFromSwitch != nil {
+			m.FactoryResetFromSwitch = types.BoolValue(*settings.FactoryResetFromSwitch)
+		} else {
+			m.FactoryResetFromSwitch = types.BoolNull()
+		}
+
+		m.Debug = types.ObjectNull(sysConfigDebugAttrTypes)
+		m.RPCUdp = types.ObjectNull(sysConfigRPCUdpAttrTypes)
+		m.CfgRev = types.Float64Null()
+		return
+	}
+
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + m.IP.ValueString())
@@ -556,6 +712,13 @@ func (r *sysConfigResource) get(ctx context.Context, m *sysConfigResourceModel, 
 	} else if m.CfgRev.IsUnknown() {
 		m.CfgRev = types.Float64Null()
 	}
+	m.AllowCrossOrigin = types.BoolNull()
+	m.LedStatusDisable = types.BoolNull()
+	m.LongpushTime = types.Float64Null()
+	m.TzAutodetect = types.BoolNull()
+	m.FavoritesEnabled = types.BoolNull()
+	m.ResetByPowerCycles = types.BoolNull()
+	m.FactoryResetFromSwitch = types.BoolNull()
 }
 
 func (r *sysConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -572,6 +735,89 @@ func (r *sysConfigResource) Read(ctx context.Context, req resource.ReadRequest, 
 }
 
 func (r *sysConfigResource) apply(ctx context.Context, plan sysConfigResourceModel, diags *diag.Diagnostics) {
+	ip := plan.IP.ValueString()
+
+	// Detect device version first
+	version := DetectDeviceVersion(ip)
+	if version.Generation == 1 {
+		q := url.Values{}
+		if !plan.Device.IsNull() && !plan.Device.IsUnknown() {
+			var wDevice sysConfigDeviceModel
+			diags.Append(plan.Device.As(ctx, &wDevice, basetypes.ObjectAsOptions{})...)
+			if !wDevice.Name.IsNull() && !wDevice.Name.IsUnknown() {
+				q.Set("name", wDevice.Name.ValueString())
+			}
+			if !wDevice.Discoverable.IsNull() && !wDevice.Discoverable.IsUnknown() {
+				q.Set("discoverable", strconv.FormatBool(wDevice.Discoverable.ValueBool()))
+			}
+			if !wDevice.EcoMode.IsNull() && !wDevice.EcoMode.IsUnknown() {
+				q.Set("eco_mode_enabled", strconv.FormatBool(wDevice.EcoMode.ValueBool()))
+			}
+			if (!wDevice.Profile.IsNull() && !wDevice.Profile.IsUnknown()) || (!wDevice.AddonType.IsNull() && !wDevice.AddonType.IsUnknown()) || (!wDevice.SysBtnToggle.IsNull() && !wDevice.SysBtnToggle.IsUnknown()) || (!wDevice.TLSCheckCertValidityTime.IsNull() && !wDevice.TLSCheckCertValidityTime.IsUnknown()) || (!wDevice.EnhancedSecurity.IsNull() && !wDevice.EnhancedSecurity.IsUnknown()) {
+				diags.AddWarning("Gen1 partial support", "Some sys_config.device fields are not supported on Gen1 and were ignored.")
+			}
+		}
+		if !plan.Location.IsNull() && !plan.Location.IsUnknown() {
+			var wLocation sysConfigLocationModel
+			diags.Append(plan.Location.As(ctx, &wLocation, basetypes.ObjectAsOptions{})...)
+			if !wLocation.Tz.IsNull() && !wLocation.Tz.IsUnknown() {
+				q.Set("timezone", wLocation.Tz.ValueString())
+			} else {
+				q.Set("autodetect_timezone", "1")
+			}
+			if !wLocation.Lat.IsNull() && !wLocation.Lat.IsUnknown() {
+				q.Set("lat", strconv.FormatFloat(wLocation.Lat.ValueFloat64(), 'f', -1, 64))
+			}
+			if !wLocation.Lon.IsNull() && !wLocation.Lon.IsUnknown() {
+				q.Set("lng", strconv.FormatFloat(wLocation.Lon.ValueFloat64(), 'f', -1, 64))
+			}
+		}
+		if !plan.Sntp.IsNull() && !plan.Sntp.IsUnknown() {
+			var wSntp sysConfigSntpModel
+			diags.Append(plan.Sntp.As(ctx, &wSntp, basetypes.ObjectAsOptions{})...)
+			if !wSntp.Server.IsNull() && !wSntp.Server.IsUnknown() {
+				q.Set("sntp_server", wSntp.Server.ValueString())
+			}
+		}
+		if !plan.AllowCrossOrigin.IsNull() && !plan.AllowCrossOrigin.IsUnknown() {
+			q.Set("allow_cross_origin", strconv.FormatBool(plan.AllowCrossOrigin.ValueBool()))
+		}
+		if !plan.LedStatusDisable.IsNull() && !plan.LedStatusDisable.IsUnknown() {
+			q.Set("led_status_disable", strconv.FormatBool(plan.LedStatusDisable.ValueBool()))
+		}
+		if !plan.LongpushTime.IsNull() && !plan.LongpushTime.IsUnknown() {
+			q.Set("longpush_time", strconv.FormatFloat(plan.LongpushTime.ValueFloat64(), 'f', -1, 64))
+		}
+		if !plan.TzAutodetect.IsNull() && !plan.TzAutodetect.IsUnknown() {
+			q.Set("tzautodetect", strconv.FormatBool(plan.TzAutodetect.ValueBool()))
+		}
+		if !plan.FavoritesEnabled.IsNull() && !plan.FavoritesEnabled.IsUnknown() {
+			q.Set("favorites_enabled", strconv.FormatBool(plan.FavoritesEnabled.ValueBool()))
+		}
+		if !plan.ResetByPowerCycles.IsNull() && !plan.ResetByPowerCycles.IsUnknown() {
+			q.Set("pon_wifi_reset", strconv.FormatBool(plan.ResetByPowerCycles.ValueBool()))
+		}
+		if !plan.FactoryResetFromSwitch.IsNull() && !plan.FactoryResetFromSwitch.IsUnknown() {
+			q.Set("factory_reset_from_switch", strconv.FormatBool(plan.FactoryResetFromSwitch.ValueBool()))
+		}
+		if (!plan.Debug.IsNull() && !plan.Debug.IsUnknown()) || (!plan.RPCUdp.IsNull() && !plan.RPCUdp.IsUnknown()) || (!plan.CfgRev.IsNull() && !plan.CfgRev.IsUnknown()) {
+			diags.AddWarning("Gen1 partial support", "Debug, rpc_udp and cfg_rev are not configurable on Gen1 and were ignored.")
+		}
+		if diags.HasError() {
+			return
+		}
+		if err := gen1SetSettings(ip, q); err != nil {
+			diags.AddError("Failed to set Gen1 config", err.Error())
+		}
+		return
+	}
+
+	if version.Generation != 2 {
+		msg := BuildDeviceCompatibilityError(ip, version)
+		diags.AddError("Unsupported Device", msg)
+		return
+	}
+
 	var cfg components.SysConfig
 	if !plan.Device.IsNull() && !plan.Device.IsUnknown() {
 		var wDevice sysConfigDeviceModel

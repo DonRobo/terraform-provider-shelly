@@ -5,6 +5,10 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
+
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -21,8 +25,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"resty.dev/v3"
-	"strconv"
-	"strings"
 )
 
 var (
@@ -190,6 +192,62 @@ func (r *switchConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 }
 
 func (r *switchConfigResource) get(ctx context.Context, m *switchConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(m.IP.ValueString())
+	if version.Generation == 1 {
+		if mode, err := gen1GetMode(m.IP.ValueString()); err == nil && mode == "roller" {
+			diags.AddWarning("Gen1 roller mode detected", "This device is in roller mode. `shelly_switch_config` updates relay settings, while the UI button type is controlled by roller settings and may still appear as toggle.")
+		}
+		got, err := gen1GetRelaySettings(m.IP.ValueString(), int(m.ID.ValueInt64()))
+		if err != nil {
+			diags.AddError("Failed to read Gen1 relay config", err.Error())
+			return
+		}
+		if got.Name != nil {
+			m.Name = types.StringValue(*got.Name)
+		} else {
+			m.Name = types.StringNull()
+		}
+		if got.BtnType != nil {
+			m.InMode = types.StringValue(mapGen1BtnTypeToInMode(*got.BtnType))
+		} else {
+			m.InMode = types.StringNull()
+		}
+		if got.DefaultState != nil {
+			m.InitialState = types.StringValue(mapGen1DefaultStateToInitialState(*got.DefaultState))
+		} else {
+			m.InitialState = types.StringNull()
+		}
+		if got.AutoOn != nil {
+			m.AutoOn = types.BoolValue(*got.AutoOn > 0)
+			m.AutoOnDelay = types.Float64Value(*got.AutoOn)
+		} else {
+			m.AutoOn = types.BoolNull()
+			m.AutoOnDelay = types.Float64Null()
+		}
+		if got.AutoOff != nil {
+			m.AutoOff = types.BoolValue(*got.AutoOff > 0)
+			m.AutoOffDelay = types.Float64Value(*got.AutoOff)
+		} else {
+			m.AutoOff = types.BoolNull()
+			m.AutoOffDelay = types.Float64Null()
+		}
+		if got.MaxPower != nil {
+			m.PowerLimit = types.Float64Value(*got.MaxPower)
+		} else {
+			m.PowerLimit = types.Float64Null()
+		}
+
+		m.InLocked = types.BoolNull()
+		m.AutorecoverVoltageErrors = types.BoolNull()
+		m.InputID = types.Float64Null()
+		m.VoltageLimit = types.Float64Null()
+		m.UndervoltageLimit = types.Float64Null()
+		m.CurrentLimit = types.Float64Null()
+		m.Reverse = types.BoolNull()
+		m.Counts = types.ObjectNull(switchConfigCountsAttrTypes)
+		return
+	}
+
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + m.IP.ValueString())
@@ -310,6 +368,70 @@ func (r *switchConfigResource) Read(ctx context.Context, req resource.ReadReques
 }
 
 func (r *switchConfigResource) apply(ctx context.Context, plan switchConfigResourceModel, diags *diag.Diagnostics) {
+	ip := plan.IP.ValueString()
+
+	// Detect device version first
+	version := DetectDeviceVersion(ip)
+	if version.Generation == 1 {
+		if mode, err := gen1GetMode(ip); err == nil && mode == "roller" {
+			diags.AddWarning("Gen1 roller mode detected", "This device is in roller mode. `shelly_switch_config` updates relay settings, while the UI button type is controlled by roller settings and may still appear as toggle.")
+		}
+		q := url.Values{}
+		if !plan.Name.IsNull() && !plan.Name.IsUnknown() {
+			q.Set("name", plan.Name.ValueString())
+		}
+		if !plan.InMode.IsNull() && !plan.InMode.IsUnknown() {
+			q.Set("btn_type", mapInModeToGen1BtnType(plan.InMode.ValueString()))
+		}
+		if !plan.InitialState.IsNull() && !plan.InitialState.IsUnknown() {
+			q.Set("default_state", mapInitialStateToGen1DefaultState(plan.InitialState.ValueString()))
+		}
+		if !plan.AutoOn.IsNull() && !plan.AutoOn.IsUnknown() {
+			if plan.AutoOn.ValueBool() {
+				delay := 0.0
+				if !plan.AutoOnDelay.IsNull() && !plan.AutoOnDelay.IsUnknown() {
+					delay = plan.AutoOnDelay.ValueFloat64()
+				}
+				q.Set("auto_on", strconv.FormatFloat(delay, 'f', -1, 64))
+			} else {
+				q.Set("auto_on", "0")
+			}
+		} else if !plan.AutoOnDelay.IsNull() && !plan.AutoOnDelay.IsUnknown() {
+			q.Set("auto_on", strconv.FormatFloat(plan.AutoOnDelay.ValueFloat64(), 'f', -1, 64))
+		}
+		if !plan.AutoOff.IsNull() && !plan.AutoOff.IsUnknown() {
+			if plan.AutoOff.ValueBool() {
+				delay := 0.0
+				if !plan.AutoOffDelay.IsNull() && !plan.AutoOffDelay.IsUnknown() {
+					delay = plan.AutoOffDelay.ValueFloat64()
+				}
+				q.Set("auto_off", strconv.FormatFloat(delay, 'f', -1, 64))
+			} else {
+				q.Set("auto_off", "0")
+			}
+		} else if !plan.AutoOffDelay.IsNull() && !plan.AutoOffDelay.IsUnknown() {
+			q.Set("auto_off", strconv.FormatFloat(plan.AutoOffDelay.ValueFloat64(), 'f', -1, 64))
+		}
+		if !plan.PowerLimit.IsNull() && !plan.PowerLimit.IsUnknown() {
+			q.Set("max_power", strconv.FormatFloat(plan.PowerLimit.ValueFloat64(), 'f', -1, 64))
+		}
+
+		if (!plan.InLocked.IsNull() && !plan.InLocked.IsUnknown()) || (!plan.AutorecoverVoltageErrors.IsNull() && !plan.AutorecoverVoltageErrors.IsUnknown()) || (!plan.InputID.IsNull() && !plan.InputID.IsUnknown()) || (!plan.VoltageLimit.IsNull() && !plan.VoltageLimit.IsUnknown()) || (!plan.UndervoltageLimit.IsNull() && !plan.UndervoltageLimit.IsUnknown()) || (!plan.CurrentLimit.IsNull() && !plan.CurrentLimit.IsUnknown()) || (!plan.Reverse.IsNull() && !plan.Reverse.IsUnknown()) || (!plan.Counts.IsNull() && !plan.Counts.IsUnknown()) {
+			diags.AddWarning("Gen1 partial support", "Some switch_config fields are not supported on Gen1 and were ignored.")
+		}
+
+		if err := gen1SetRelaySettings(ip, int(plan.ID.ValueInt64()), q); err != nil {
+			diags.AddError("Failed to set Gen1 relay config", err.Error())
+		}
+		return
+	}
+
+	if version.Generation != 2 {
+		msg := BuildDeviceCompatibilityError(ip, version)
+		diags.AddError("Unsupported Device", msg)
+		return
+	}
+
 	var cfg components.SwitchConfig
 	cfg.ID = int(plan.ID.ValueInt64())
 	if !plan.Name.IsNull() && !plan.Name.IsUnknown() {

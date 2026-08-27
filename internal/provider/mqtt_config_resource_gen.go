@@ -4,6 +4,9 @@ package provider
 
 import (
 	"context"
+	"net/url"
+	"strconv"
+
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -115,6 +118,42 @@ func (r *mqttConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 }
 
 func (r *mqttConfigResource) get(ctx context.Context, m *mqttConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(m.IP.ValueString())
+	if version.Generation == 1 {
+		got, err := gen1GetSettings(m.IP.ValueString())
+		if err != nil {
+			diags.AddError("Failed to read Gen1 config", err.Error())
+			return
+		}
+		if got.Mqtt.Enable != nil {
+			m.Enable = types.BoolValue(*got.Mqtt.Enable)
+		} else {
+			m.Enable = types.BoolNull()
+		}
+		if got.Mqtt.Server != "" {
+			m.Server = types.StringValue(got.Mqtt.Server)
+		} else {
+			m.Server = types.StringNull()
+		}
+		if got.Mqtt.ID != "" {
+			m.ClientID = types.StringValue(got.Mqtt.ID)
+		} else {
+			m.ClientID = types.StringNull()
+		}
+		if got.Mqtt.User != "" {
+			m.User = types.StringValue(got.Mqtt.User)
+		} else {
+			m.User = types.StringNull()
+		}
+		m.SSLCA = types.StringNull()
+		m.TopicPrefix = types.StringNull()
+		m.RPCNtf = types.BoolNull()
+		m.StatusNtf = types.BoolNull()
+		m.UseClientCert = types.BoolNull()
+		m.EnableControl = types.BoolNull()
+		return
+	}
+
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + m.IP.ValueString())
@@ -189,6 +228,30 @@ func (r *mqttConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 }
 
 func (r *mqttConfigResource) apply(ctx context.Context, plan mqttConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(plan.IP.ValueString())
+	if version.Generation == 1 {
+		q := url.Values{}
+		if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
+			q.Set("mqtt_enable", strconv.FormatBool(plan.Enable.ValueBool()))
+		}
+		if !plan.Server.IsNull() && !plan.Server.IsUnknown() {
+			q.Set("mqtt_server", plan.Server.ValueString())
+		}
+		if !plan.ClientID.IsNull() && !plan.ClientID.IsUnknown() {
+			q.Set("mqtt_id", plan.ClientID.ValueString())
+		}
+		if !plan.User.IsNull() && !plan.User.IsUnknown() {
+			q.Set("mqtt_user", plan.User.ValueString())
+		}
+		if (!plan.SSLCA.IsNull() && !plan.SSLCA.IsUnknown()) || (!plan.TopicPrefix.IsNull() && !plan.TopicPrefix.IsUnknown()) || (!plan.RPCNtf.IsNull() && !plan.RPCNtf.IsUnknown()) || (!plan.StatusNtf.IsNull() && !plan.StatusNtf.IsUnknown()) || (!plan.UseClientCert.IsNull() && !plan.UseClientCert.IsUnknown()) || (!plan.EnableControl.IsNull() && !plan.EnableControl.IsUnknown()) {
+			diags.AddWarning("Gen1 partial support", "Some mqtt_config fields are not supported on Gen1 and were ignored.")
+		}
+		if err := gen1SetSettings(plan.IP.ValueString(), q); err != nil {
+			diags.AddError("Failed to set Gen1 mqtt config", err.Error())
+		}
+		return
+	}
+
 	var cfg components.MQTTConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()

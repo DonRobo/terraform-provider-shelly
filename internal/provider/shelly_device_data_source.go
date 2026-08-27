@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	shelly "github.com/DonRobo/shelly-go"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -62,13 +63,50 @@ func (d *ShellyDeviceDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
+	ip := data.IP.ValueString()
+
+	// Detect device version first
+	version := DetectDeviceVersion(ip)
+	if version.Generation == 1 {
+		settings, err := gen1GetSettings(ip)
+		if err != nil {
+			resp.Diagnostics.AddError("Failed to query Gen1 device info", err.Error())
+			return
+		}
+		if settings.Device.MAC != "" {
+			data.MAC = types.StringValue(settings.Device.MAC)
+		} else if version.MAC != "" {
+			data.MAC = types.StringValue(version.MAC)
+		} else {
+			data.MAC = types.StringNull()
+		}
+		if settings.Fw != "" {
+			data.Version = types.StringValue(settings.Fw)
+		} else if version.Firmware != "" {
+			data.Version = types.StringValue(version.Firmware)
+		} else {
+			data.Version = types.StringNull()
+		}
+
+		diags = resp.State.Set(ctx, data)
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	if version.Generation != 2 {
+		msg := BuildDeviceCompatibilityError(ip, version)
+		resp.Diagnostics.AddError("Unsupported Device", msg)
+		return
+	}
+
 	client := resty.New()
 	defer client.Close()
-	client.SetBaseURL("http://" + data.IP.ValueString())
+	client.SetBaseURL("http://" + ip)
 
 	info, _, err := (&shelly.ShellyGetDeviceInfoRequest{}).Do(client)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to query device info", err.Error())
+		resp.Diagnostics.AddError("Failed to query device info",
+			fmt.Sprintf("Device at %s may not be a Gen2 device. Error: %v", ip, err))
 		return
 	}
 

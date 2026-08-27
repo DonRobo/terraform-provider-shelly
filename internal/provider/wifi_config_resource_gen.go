@@ -4,6 +4,9 @@ package provider
 
 import (
 	"context"
+	"net/url"
+	"strconv"
+
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -234,6 +237,91 @@ func (r *wifiConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 }
 
 func (r *wifiConfigResource) get(ctx context.Context, m *wifiConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(m.IP.ValueString())
+	if version.Generation == 1 {
+		got, err := gen1GetSettings(m.IP.ValueString())
+		if err != nil {
+			diags.AddError("Failed to read Gen1 config", err.Error())
+			return
+		}
+
+		sAP := wifiConfigAPModel{
+			SSID:   types.StringNull(),
+			Pass:   types.StringNull(),
+			IsOpen: types.BoolNull(),
+			Enable: types.BoolNull(),
+		}
+		if got.WifiAP.SSID != "" {
+			sAP.SSID = types.StringValue(got.WifiAP.SSID)
+		}
+		if got.WifiAP.Key != "" {
+			sAP.Pass = types.StringValue(got.WifiAP.Key)
+			sAP.IsOpen = types.BoolValue(false)
+		} else {
+			sAP.IsOpen = types.BoolValue(true)
+		}
+		if got.WifiAP.Enabled != nil {
+			sAP.Enable = types.BoolValue(*got.WifiAP.Enabled)
+		}
+		sAP.RangeExtender = types.ObjectNull(wifiConfigAPRangeExtenderAttrTypes)
+		oAP, dAP := types.ObjectValueFrom(ctx, wifiConfigAPAttrTypes, sAP)
+		diags.Append(dAP...)
+		m.AP = oAP
+
+		sSta := wifiConfigStaModel{
+			SSID:       types.StringNull(),
+			Pass:       types.StringNull(),
+			IsOpen:     types.BoolNull(),
+			Enable:     types.BoolNull(),
+			Ipv4mode:   types.StringNull(),
+			IP:         types.StringNull(),
+			Netmask:    types.StringNull(),
+			Gw:         types.StringNull(),
+			Nameserver: types.StringNull(),
+		}
+		if got.WifiSta.SSID != "" {
+			sSta.SSID = types.StringValue(got.WifiSta.SSID)
+		}
+		sSta.IsOpen = types.BoolNull()
+		if got.WifiSta.Enabled != nil {
+			sSta.Enable = types.BoolValue(*got.WifiSta.Enabled)
+		}
+		if got.WifiSta.Ipv4Method != "" {
+			sSta.Ipv4mode = types.StringValue(got.WifiSta.Ipv4Method)
+		}
+		if got.WifiSta.IP != "" {
+			sSta.IP = types.StringValue(got.WifiSta.IP)
+		}
+		if got.WifiSta.Mask != "" {
+			sSta.Netmask = types.StringValue(got.WifiSta.Mask)
+		}
+		if got.WifiSta.Gw != "" {
+			sSta.Gw = types.StringValue(got.WifiSta.Gw)
+		}
+		if got.WifiSta.DNS != "" {
+			sSta.Nameserver = types.StringValue(got.WifiSta.DNS)
+		}
+		oSta, dSta := types.ObjectValueFrom(ctx, wifiConfigStaAttrTypes, sSta)
+		diags.Append(dSta...)
+		m.Sta = oSta
+
+		sRoam := wifiConfigRoamModel{RssiThr: types.Float64Null(), Interval: types.Float64Null()}
+		if got.ApRoaming.Threshold != nil {
+			sRoam.RssiThr = types.Float64Value(*got.ApRoaming.Threshold)
+		}
+		if got.ApRoaming.Enabled != nil {
+			if *got.ApRoaming.Enabled {
+				sRoam.Interval = types.Float64Value(1)
+			} else {
+				sRoam.Interval = types.Float64Value(0)
+			}
+		}
+		oRoam, dRoam := types.ObjectValueFrom(ctx, wifiConfigRoamAttrTypes, sRoam)
+		diags.Append(dRoam...)
+		m.Roam = oRoam
+		return
+	}
+
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + m.IP.ValueString())
@@ -382,6 +470,77 @@ func (r *wifiConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 }
 
 func (r *wifiConfigResource) apply(ctx context.Context, plan wifiConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(plan.IP.ValueString())
+	if version.Generation == 1 {
+		q := url.Values{}
+		if !plan.AP.IsNull() && !plan.AP.IsUnknown() {
+			var wAP wifiConfigAPModel
+			diags.Append(plan.AP.As(ctx, &wAP, basetypes.ObjectAsOptions{})...)
+			if !wAP.Enable.IsNull() && !wAP.Enable.IsUnknown() {
+				q.Set("wifi_ap_enabled", strconv.FormatBool(wAP.Enable.ValueBool()))
+			}
+			if !wAP.SSID.IsNull() && !wAP.SSID.IsUnknown() {
+				q.Set("wifi_ap_ssid", wAP.SSID.ValueString())
+			}
+			if !wAP.Pass.IsNull() && !wAP.Pass.IsUnknown() {
+				q.Set("wifi_ap_key", wAP.Pass.ValueString())
+			}
+			if !wAP.IsOpen.IsNull() && !wAP.IsOpen.IsUnknown() {
+				if wAP.IsOpen.ValueBool() {
+					q.Set("wifi_ap_key", "")
+				}
+			}
+			if !wAP.RangeExtender.IsNull() && !wAP.RangeExtender.IsUnknown() {
+				diags.AddWarning("Gen1 partial support", "`ap.range_extender` is not supported on Gen1 and was ignored.")
+			}
+		}
+		if !plan.Sta.IsNull() && !plan.Sta.IsUnknown() {
+			var wSta wifiConfigStaModel
+			diags.Append(plan.Sta.As(ctx, &wSta, basetypes.ObjectAsOptions{})...)
+			if !wSta.Enable.IsNull() && !wSta.Enable.IsUnknown() {
+				q.Set("wifi_sta_enabled", strconv.FormatBool(wSta.Enable.ValueBool()))
+			}
+			if !wSta.SSID.IsNull() && !wSta.SSID.IsUnknown() {
+				q.Set("wifi_sta_ssid", wSta.SSID.ValueString())
+			}
+			if !wSta.Pass.IsNull() && !wSta.Pass.IsUnknown() {
+				q.Set("wifi_sta_pass", wSta.Pass.ValueString())
+			}
+			if !wSta.Ipv4mode.IsNull() && !wSta.Ipv4mode.IsUnknown() {
+				q.Set("wifi_sta_ipv4_method", wSta.Ipv4mode.ValueString())
+			}
+			if !wSta.IP.IsNull() && !wSta.IP.IsUnknown() {
+				q.Set("wifi_sta_ip", wSta.IP.ValueString())
+			}
+			if !wSta.Netmask.IsNull() && !wSta.Netmask.IsUnknown() {
+				q.Set("wifi_sta_mask", wSta.Netmask.ValueString())
+			}
+			if !wSta.Gw.IsNull() && !wSta.Gw.IsUnknown() {
+				q.Set("wifi_sta_gw", wSta.Gw.ValueString())
+			}
+			if !wSta.Nameserver.IsNull() && !wSta.Nameserver.IsUnknown() {
+				q.Set("wifi_sta_dns", wSta.Nameserver.ValueString())
+			}
+			if !wSta.IsOpen.IsNull() && !wSta.IsOpen.IsUnknown() {
+				diags.AddWarning("Gen1 partial support", "`sta.is_open` is read-only/unsupported on Gen1 and was ignored.")
+			}
+		}
+		if !plan.Roam.IsNull() && !plan.Roam.IsUnknown() {
+			var wRoam wifiConfigRoamModel
+			diags.Append(plan.Roam.As(ctx, &wRoam, basetypes.ObjectAsOptions{})...)
+			if !wRoam.RssiThr.IsNull() && !wRoam.RssiThr.IsUnknown() {
+				q.Set("ap_roaming_threshold", strconv.FormatFloat(wRoam.RssiThr.ValueFloat64(), 'f', -1, 64))
+			}
+			if !wRoam.Interval.IsNull() && !wRoam.Interval.IsUnknown() {
+				q.Set("ap_roaming_enabled", strconv.FormatBool(wRoam.Interval.ValueFloat64() > 0))
+			}
+		}
+		if err := gen1SetSettings(plan.IP.ValueString(), q); err != nil {
+			diags.AddError("Failed to set Gen1 wifi config", err.Error())
+		}
+		return
+	}
+
 	var cfg components.WifiConfig
 	if !plan.AP.IsNull() && !plan.AP.IsUnknown() {
 		var wAP wifiConfigAPModel

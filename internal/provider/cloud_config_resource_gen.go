@@ -4,6 +4,9 @@ package provider
 
 import (
 	"context"
+	"net/url"
+	"strconv"
+
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -56,6 +59,22 @@ func (r *cloudConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 }
 
 func (r *cloudConfigResource) get(ctx context.Context, m *cloudConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(m.IP.ValueString())
+	if version.Generation == 1 {
+		got, err := gen1GetSettings(m.IP.ValueString())
+		if err != nil {
+			diags.AddError("Failed to read Gen1 config", err.Error())
+			return
+		}
+		if got.Cloud.Enabled != nil {
+			m.Enable = types.BoolValue(*got.Cloud.Enabled)
+		} else {
+			m.Enable = types.BoolNull()
+		}
+		m.Server = types.StringNull()
+		return
+	}
+
 	client := resty.New()
 	defer client.Close()
 	client.SetBaseURL("http://" + m.IP.ValueString())
@@ -90,6 +109,21 @@ func (r *cloudConfigResource) Read(ctx context.Context, req resource.ReadRequest
 }
 
 func (r *cloudConfigResource) apply(ctx context.Context, plan cloudConfigResourceModel, diags *diag.Diagnostics) {
+	version := DetectDeviceVersion(plan.IP.ValueString())
+	if version.Generation == 1 {
+		q := url.Values{}
+		if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
+			q.Set("cloud_enabled", strconv.FormatBool(plan.Enable.ValueBool()))
+		}
+		if !plan.Server.IsNull() && !plan.Server.IsUnknown() {
+			diags.AddWarning("Gen1 partial support", "`cloud_config.server` is not configurable on Gen1 and was ignored.")
+		}
+		if err := gen1SetSettings(plan.IP.ValueString(), q); err != nil {
+			diags.AddError("Failed to set Gen1 cloud config", err.Error())
+		}
+		return
+	}
+
 	var cfg components.CloudConfig
 	if !plan.Enable.IsNull() && !plan.Enable.IsUnknown() {
 		v := plan.Enable.ValueBool()
