@@ -780,32 +780,9 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 			}
 		}
 		if !plan.SafetySwitch.IsNull() && !plan.SafetySwitch.IsUnknown() {
-			var wSafety coverConfigSafetySwitchModel
-			diags.Append(plan.SafetySwitch.As(ctx, &wSafety, basetypes.ObjectAsOptions{})...)
-			if !wSafety.Enable.IsNull() && !wSafety.Enable.IsUnknown() {
-				if !wSafety.Enable.ValueBool() {
-					q.Set("safety_mode", "disabled")
-				} else {
-					direction := "both"
-					if !wSafety.Direction.IsNull() && !wSafety.Direction.IsUnknown() {
-						direction = strings.ToLower(wSafety.Direction.ValueString())
-					}
-					switch direction {
-					case "open":
-						q.Set("safety_mode", "while_opening")
-					case "close":
-						q.Set("safety_mode", "while_closing")
-					default:
-						q.Set("safety_mode", "while_moving")
-					}
-				}
-			}
-			if !wSafety.Action.IsNull() && !wSafety.Action.IsUnknown() {
-				q.Set("safety_action", wSafety.Action.ValueString())
-			}
-			if !wSafety.AllowedMove.IsNull() && !wSafety.AllowedMove.IsUnknown() {
-				diags.AddWarning("Gen1 partial support", "`safety_switch.allowed_move` is not supported on Gen1 and was ignored.")
-			}
+			// Gen1 safety_mode / safety_action are hardware-controlled read-only parameters on the 2.5;
+			// the device returns 400 when you attempt to set them via HTTP. Only emit a warning.
+			diags.AddWarning("Gen1 partial support", "`safety_switch` direction/action are hardware-controlled on Gen1 and cannot be set via the API. They were ignored.")
 		}
 
 		if (!plan.Name.IsNull() && !plan.Name.IsUnknown()) || (!plan.InLocked.IsNull() && !plan.InLocked.IsUnknown()) || (!plan.PowerLimit.IsNull() && !plan.PowerLimit.IsUnknown()) || (!plan.VoltageLimit.IsNull() && !plan.VoltageLimit.IsUnknown()) || (!plan.UndervoltageLimit.IsNull() && !plan.UndervoltageLimit.IsUnknown()) || (!plan.CurrentLimit.IsNull() && !plan.CurrentLimit.IsUnknown()) || (!plan.Motor.IsNull() && !plan.Motor.IsUnknown()) || (!plan.MaintenanceMode.IsNull() && !plan.MaintenanceMode.IsUnknown()) || (!plan.Slat.IsNull() && !plan.Slat.IsUnknown()) {

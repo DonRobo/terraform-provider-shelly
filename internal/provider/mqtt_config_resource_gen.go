@@ -130,21 +130,11 @@ func (r *mqttConfigResource) get(ctx context.Context, m *mqttConfigResourceModel
 		} else {
 			m.Enable = types.BoolNull()
 		}
-		if got.Mqtt.Server != "" {
-			m.Server = types.StringValue(got.Mqtt.Server)
-		} else {
-			m.Server = types.StringNull()
-		}
-		if got.Mqtt.ID != "" {
-			m.ClientID = types.StringValue(got.Mqtt.ID)
-		} else {
-			m.ClientID = types.StringNull()
-		}
-		if got.Mqtt.User != "" {
-			m.User = types.StringValue(got.Mqtt.User)
-		} else {
-			m.User = types.StringNull()
-		}
+		// Always return the actual string value (even empty), so plan consistency holds
+		// when the configuration explicitly sets server/user/client_id to "".
+		m.Server = types.StringValue(got.Mqtt.Server)
+		m.ClientID = types.StringValue(got.Mqtt.ID)
+		m.User = types.StringValue(got.Mqtt.User)
 		m.SSLCA = types.StringNull()
 		m.TopicPrefix = types.StringNull()
 		m.RPCNtf = types.BoolNull()

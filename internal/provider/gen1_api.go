@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	gen1RequestTimeout = 20 * time.Second
-	gen1RetryCount     = 5
+	gen1RequestTimeout = 30 * time.Second
+	gen1RetryCount     = 7
+	gen1RetryBaseDelay = 3 * time.Second
 )
 
 func gen1GetWithRetry(u string) (*http.Response, error) {
@@ -26,7 +27,7 @@ func gen1GetWithRetry(u string) (*http.Response, error) {
 		}
 		lastErr = err
 		if attempt < gen1RetryCount {
-			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+			time.Sleep(time.Duration(attempt) * gen1RetryBaseDelay)
 		}
 	}
 	return nil, fmt.Errorf("request failed after %d attempts: %w", gen1RetryCount, lastErr)
@@ -123,22 +124,36 @@ type gen1FavoriteSettingsResponse struct {
 }
 
 func gen1HTTPGetJSON(path string, target any) error {
-	resp, err := gen1GetWithRetry(path)
-	if err != nil {
-		return err
+	var lastErr error
+	for attempt := 1; attempt <= gen1RetryCount; attempt++ {
+		if attempt > 1 {
+			// Back off before retrying truncated / timed-out responses.
+			time.Sleep(time.Duration(attempt) * gen1RetryBaseDelay)
+		}
+		client := &http.Client{Timeout: gen1RequestTimeout}
+		resp, err := client.Get(path)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			resp.Body.Close()
+			return fmt.Errorf("status %d", resp.StatusCode)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if err := json.Unmarshal(body, target); err != nil {
+			// Truncated JSON means the device was overloaded – retry.
+			lastErr = fmt.Errorf("failed to unmarshal response body: %w", err)
+			continue
+		}
+		return nil
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(body, target); err != nil {
-		return err
-	}
-	return nil
+	return fmt.Errorf("request failed after %d attempts: %w", gen1RetryCount, lastErr)
 }
 
 func gen1GetSettings(ip string) (*gen1SettingsResponse, error) {
@@ -187,68 +202,57 @@ func gen1GetMode(ip string) (string, error) {
 	return "", nil
 }
 
+// gen1DoSet fires a GET-style settings URL and retries on connection errors.
+// The response body is drained but not parsed (Gen1 returns the full settings
+// JSON which we don't need after a write).
+func gen1DoSet(u string) error {
+	var lastErr error
+	for attempt := 1; attempt <= gen1RetryCount; attempt++ {
+		if attempt > 1 {
+			time.Sleep(time.Duration(attempt) * gen1RetryBaseDelay)
+		}
+		client := &http.Client{Timeout: gen1RequestTimeout}
+		resp, err := client.Get(u)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		io.Copy(io.Discard, resp.Body) //nolint:errcheck
+		resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("status %d", resp.StatusCode)
+		}
+		return nil
+	}
+	return fmt.Errorf("set request failed after %d attempts: %w", gen1RetryCount, lastErr)
+}
+
 func gen1SetSettings(ip string, q url.Values) error {
 	if len(q) == 0 {
 		return nil
 	}
-	u := "http://" + ip + "/settings?" + q.Encode()
-	resp, err := gen1GetWithRetry(u)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	return nil
+	return gen1DoSet("http://" + ip + "/settings?" + q.Encode())
 }
 
 func gen1SetRelaySettings(ip string, id int, q url.Values) error {
 	if len(q) == 0 {
 		return nil
 	}
-	u := "http://" + ip + "/settings/relay/" + strconv.Itoa(id) + "?" + q.Encode()
-	resp, err := gen1GetWithRetry(u)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	return nil
+	return gen1DoSet("http://" + ip + "/settings/relay/" + strconv.Itoa(id) + "?" + q.Encode())
 }
 
 func gen1SetRollerSettings(ip string, id int, q url.Values) error {
 	if len(q) == 0 {
 		return nil
 	}
-	u := "http://" + ip + "/settings/roller/" + strconv.Itoa(id) + "?" + q.Encode()
-	resp, err := gen1GetWithRetry(u)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	return nil
+	return gen1DoSet("http://" + ip + "/settings/roller/" + strconv.Itoa(id) + "?" + q.Encode())
 }
 
 func gen1SetFavoriteSettings(ip string, id int, q url.Values) error {
 	if len(q) == 0 {
 		return nil
 	}
-	u := "http://" + ip + "/settings/favorites/" + strconv.Itoa(id) + "?" + q.Encode()
-	resp, err := gen1GetWithRetry(u)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("status %d", resp.StatusCode)
-	}
-	return nil
+	return gen1DoSet("http://" + ip + "/settings/favorites/" + strconv.Itoa(id) + "?" + q.Encode())
 }
 
 func mapGen1BtnTypeToInMode(v string) string {

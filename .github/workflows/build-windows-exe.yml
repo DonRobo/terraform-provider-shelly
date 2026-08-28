@@ -1,0 +1,73 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Provider version for the local package layout (no leading v)
+        required: true
+        default: 0.4.1
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Windows provider
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -trimpath -ldflags="-s -w" -o dist/terraform-provider-shelly.exe .
+
+      - name: Create workspace package
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TARGET_DIR="dist/workspace-package/terraform.d/plugins/local/jan/shelly/${VERSION}/windows_amd64"
+
+          mkdir -p "$TARGET_DIR"
+          cp dist/terraform-provider-shelly.exe "$TARGET_DIR/terraform-provider-shelly.exe"
+
+      - name: Upload raw exe artifact
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
+        with:
+          name: terraform-provider-shelly-windows-amd64-${{ steps.version.outputs.version }}
+          path: dist/terraform-provider-shelly.exe
+          if-no-files-found: error
+
+      - name: Upload workspace package artifact
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
+        with:
+          name: home-lab-workspace-provider-${{ steps.version.outputs.version }}
+          path: dist/workspace-package
+          if-no-files-found: error
