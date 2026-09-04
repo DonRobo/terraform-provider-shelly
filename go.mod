@@ -42,4 +42,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20260622175928-b703f567277d
+replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20260904194346-d0f1323225a4
