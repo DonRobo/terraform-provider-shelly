@@ -1,0 +1,28 @@
+---
+page_title: "{{.ProviderShortName}} Provider"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.ProviderShortName}} Provider
+
+{{ .Description | trimspace }}
+
+{{ if .HasExample -}}
+## Example Usage
+
+{{tffile .ExampleFile }}
+{{- end }}
+
+## Security
+
+The provider connects to each device through the Shelly local API. This API uses plain HTTP. Thus the provider sends all configuration to the device unencrypted. This includes the Wi-Fi passwords. A host on the same network can read this traffic. It can also change the replies of the device.
+
+To decrease the risk, do these steps:
+
+1. Keep the Shelly devices on an isolated network or VLAN.
+2. Run Terraform from a host on a network that you trust.
+3. When the provider supports device authentication, turn it on for each device. Refer to [issue #98](https://github.com/DonRobo/terraform-provider-shelly/issues/98).
+4. Keep the Terraform state in an encrypted backend. The state contains the Wi-Fi passwords as plain text.
+
+{{ .SchemaMarkdown | trimspace }}
