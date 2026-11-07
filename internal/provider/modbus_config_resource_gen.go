@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -12,31 +13,47 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &modbusConfigResource{}
+	_ resource.ResourceWithConfigure   = &modbusConfigResource{}
 	_ resource.ResourceWithImportState = &modbusConfigResource{}
 )
 
 func NewModbusConfigResource() resource.Resource { return &modbusConfigResource{} }
 
-type modbusConfigResource struct{}
+type modbusConfigResource struct {
+	provider *providerData
+}
 
 type modbusConfigResourceModel struct {
-	IP     types.String `tfsdk:"ip"`
-	Enable types.Bool   `tfsdk:"enable"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	Enable         types.Bool   `tfsdk:"enable"`
 }
 
 func (r *modbusConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_modbus_config"
 }
 
+func (r *modbusConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *modbusConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"enable": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -48,9 +65,8 @@ func (r *modbusConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 }
 
 func (r *modbusConfigResource) get(ctx context.Context, m *modbusConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.ModbusGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -82,9 +98,8 @@ func (r *modbusConfigResource) apply(ctx context.Context, plan modbusConfigResou
 		v := plan.Enable.ValueBool()
 		cfg.Enable = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.ModbusSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

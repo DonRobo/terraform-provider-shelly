@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -15,25 +16,28 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &bleConfigResource{}
+	_ resource.ResourceWithConfigure   = &bleConfigResource{}
 	_ resource.ResourceWithImportState = &bleConfigResource{}
 )
 
 func NewBLEConfigResource() resource.Resource { return &bleConfigResource{} }
 
-type bleConfigResource struct{}
+type bleConfigResource struct {
+	provider *providerData
+}
 
 type bleConfigRPCModel struct {
 	Enable types.Bool `tfsdk:"enable"`
 }
 
 type bleConfigResourceModel struct {
-	IP  types.String `tfsdk:"ip"`
-	RPC types.Object `tfsdk:"rpc"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	RPC            types.Object `tfsdk:"rpc"`
 }
 
 var bleConfigRPCAttrTypes = map[string]attr.Type{
@@ -44,10 +48,23 @@ func (r *bleConfigResource) Metadata(_ context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_ble_config"
 }
 
+func (r *bleConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *bleConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"rpc": schema.SingleNestedAttribute{
 				Optional:      true,
 				Computed:      true,
@@ -66,9 +83,8 @@ func (r *bleConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 }
 
 func (r *bleConfigResource) get(ctx context.Context, m *bleConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.BLEGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -116,9 +132,8 @@ func (r *bleConfigResource) apply(ctx context.Context, plan bleConfigResourceMod
 			cfg.RPC.Enable = &v
 		}
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.BLESetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

@@ -15,38 +15,54 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &presencezoneConfigResource{}
+	_ resource.ResourceWithConfigure   = &presencezoneConfigResource{}
 	_ resource.ResourceWithImportState = &presencezoneConfigResource{}
 )
 
 func NewPresenceZoneConfigResource() resource.Resource { return &presencezoneConfigResource{} }
 
-type presencezoneConfigResource struct{}
+type presencezoneConfigResource struct {
+	provider *providerData
+}
 
 type presencezoneConfigResourceModel struct {
-	IP            types.String  `tfsdk:"ip"`
-	ID            types.Int64   `tfsdk:"id"`
-	Name          types.String  `tfsdk:"name"`
-	Enable        types.Bool    `tfsdk:"enable"`
-	PresenceDelay types.Float64 `tfsdk:"presence_delay"`
-	AbsenceDelay  types.Float64 `tfsdk:"absence_delay"`
+	IP             types.String  `tfsdk:"ip"`
+	DevicePassword types.String  `tfsdk:"device_password"`
+	ID             types.Int64   `tfsdk:"id"`
+	Name           types.String  `tfsdk:"name"`
+	Enable         types.Bool    `tfsdk:"enable"`
+	PresenceDelay  types.Float64 `tfsdk:"presence_delay"`
+	AbsenceDelay   types.Float64 `tfsdk:"absence_delay"`
 }
 
 func (r *presencezoneConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_presencezone_config"
 }
 
+func (r *presencezoneConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *presencezoneConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the PresenceZone component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the PresenceZone component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -76,9 +92,8 @@ func (r *presencezoneConfigResource) Schema(_ context.Context, _ resource.Schema
 }
 
 func (r *presencezoneConfigResource) get(ctx context.Context, m *presencezoneConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.PresenceZoneGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -138,9 +153,8 @@ func (r *presencezoneConfigResource) apply(ctx context.Context, plan presencezon
 		v := plan.AbsenceDelay.ValueFloat64()
 		cfg.AbsenceDelay = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.PresenceZoneSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

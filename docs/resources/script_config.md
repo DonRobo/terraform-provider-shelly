@@ -22,5 +22,6 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `enable` (Boolean) true if the script runs by default on boot, false otherwise
 - `name` (String) Name of the script

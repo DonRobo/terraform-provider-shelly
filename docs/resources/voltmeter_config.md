@@ -22,6 +22,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `name` (String) Name of the Voltmeter instance. name length should not exceed 64 chars
 - `range` (Number) Input range, which is device-specific. See the table below.
 - `report_thr` (Number) Voltmeter report threshold in volts. Accepted range is device-specific

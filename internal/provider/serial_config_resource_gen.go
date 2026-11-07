@@ -18,19 +18,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &serialConfigResource{}
+	_ resource.ResourceWithConfigure   = &serialConfigResource{}
 	_ resource.ResourceWithImportState = &serialConfigResource{}
 )
 
 func NewSerialConfigResource() resource.Resource { return &serialConfigResource{} }
 
-type serialConfigResource struct{}
+type serialConfigResource struct {
+	provider *providerData
+}
 
 type serialConfigSerialModel struct {
 	Baud   types.Int64  `tfsdk:"baud"`
@@ -44,11 +46,12 @@ type serialConfigMbServerModel struct {
 }
 
 type serialConfigResourceModel struct {
-	IP       types.String `tfsdk:"ip"`
-	ID       types.Int64  `tfsdk:"id"`
-	Mode     types.String `tfsdk:"mode"`
-	Serial   types.Object `tfsdk:"serial"`
-	MbServer types.Object `tfsdk:"mb_server"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	ID             types.Int64  `tfsdk:"id"`
+	Mode           types.String `tfsdk:"mode"`
+	Serial         types.Object `tfsdk:"serial"`
+	MbServer       types.Object `tfsdk:"mb_server"`
 }
 
 var serialConfigSerialAttrTypes = map[string]attr.Type{
@@ -66,11 +69,24 @@ func (r *serialConfigResource) Metadata(_ context.Context, req resource.Metadata
 	resp.TypeName = req.ProviderTypeName + "_serial_config"
 }
 
+func (r *serialConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *serialConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Serial component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Serial component instance."},
 			"mode": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -126,9 +142,8 @@ func (r *serialConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 }
 
 func (r *serialConfigResource) get(ctx context.Context, m *serialConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.SerialGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -238,9 +253,8 @@ func (r *serialConfigResource) apply(ctx context.Context, plan serialConfigResou
 			cfg.MbServer.Addr = &v
 		}
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.SerialSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

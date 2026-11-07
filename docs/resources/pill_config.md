@@ -21,6 +21,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `mode` (String) Device mode. Range of values onewire, dht22, analog_in, ssr, digital_io
 - `pin0_mode` (String) Pin 0 mode. Range of values none, reserved, digital_in, digital_out
 - `pin1_mode` (String) Pin 1 mode. Range of values none, reserved, digital_in, digital_out

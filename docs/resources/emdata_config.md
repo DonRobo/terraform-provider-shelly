@@ -28,6 +28,7 @@ description: |-
 - `b_total_act_ret_energy` (Number) Total active returned energy on phase B, Wh
 - `c_total_act_energy` (Number) Total active energy on phase C, Wh
 - `c_total_act_ret_energy` (Number) Total active returned energy on phase C, Wh
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `errors` (List of String) Error condition occurred. May contain database_error or ct_type_not_set, (shown if the error is present).
 - `total_act` (Number) Total active energy on all phases, Wh
 - `total_act_ret` (Number) Total active returned energy on all phases, Wh

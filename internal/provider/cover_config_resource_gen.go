@@ -21,19 +21,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &coverConfigResource{}
+	_ resource.ResourceWithConfigure   = &coverConfigResource{}
 	_ resource.ResourceWithImportState = &coverConfigResource{}
 )
 
 func NewCoverConfigResource() resource.Resource { return &coverConfigResource{} }
 
-type coverConfigResource struct{}
+type coverConfigResource struct {
+	provider *providerData
+}
 
 type coverConfigMotorModel struct {
 	IdlePowerThr      types.Float64 `tfsdk:"idle_power_thr"`
@@ -66,6 +68,7 @@ type coverConfigSlatModel struct {
 
 type coverConfigResourceModel struct {
 	IP                   types.String  `tfsdk:"ip"`
+	DevicePassword       types.String  `tfsdk:"device_password"`
 	ID                   types.Int64   `tfsdk:"id"`
 	Name                 types.String  `tfsdk:"name"`
 	InMode               types.String  `tfsdk:"in_mode"`
@@ -119,11 +122,24 @@ func (r *coverConfigResource) Metadata(_ context.Context, req resource.MetadataR
 	resp.TypeName = req.ProviderTypeName + "_cover_config"
 }
 
+func (r *coverConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Cover component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Cover component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -344,9 +360,8 @@ func (r *coverConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 }
 
 func (r *coverConfigResource) get(ctx context.Context, m *coverConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.CoverGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -704,9 +719,8 @@ func (r *coverConfigResource) apply(ctx context.Context, plan coverConfigResourc
 		v := plan.SwapInputs.ValueBool()
 		cfg.SwapInputs = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.CoverSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

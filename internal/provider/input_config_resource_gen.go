@@ -20,19 +20,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &inputConfigResource{}
+	_ resource.ResourceWithConfigure   = &inputConfigResource{}
 	_ resource.ResourceWithImportState = &inputConfigResource{}
 )
 
 func NewInputConfigResource() resource.Resource { return &inputConfigResource{} }
 
-type inputConfigResource struct{}
+type inputConfigResource struct {
+	provider *providerData
+}
 
 type inputConfigXpercentModel struct {
 	Expr types.String `tfsdk:"expr"`
@@ -50,21 +52,22 @@ type inputConfigXfreqModel struct {
 }
 
 type inputConfigResourceModel struct {
-	IP           types.String  `tfsdk:"ip"`
-	ID           types.Int64   `tfsdk:"id"`
-	Name         types.String  `tfsdk:"name"`
-	Type         types.String  `tfsdk:"type"`
-	Enable       types.Bool    `tfsdk:"enable"`
-	Invert       types.Bool    `tfsdk:"invert"`
-	FactoryReset types.Bool    `tfsdk:"factory_reset"`
-	ReportThr    types.Float64 `tfsdk:"report_thr"`
-	Range        types.Float64 `tfsdk:"range"`
-	Xpercent     types.Object  `tfsdk:"xpercent"`
-	CountRepThr  types.Float64 `tfsdk:"count_rep_thr"`
-	FreqWindow   types.Float64 `tfsdk:"freq_window"`
-	FreqRepThr   types.Float64 `tfsdk:"freq_rep_thr"`
-	Xcounts      types.Object  `tfsdk:"xcounts"`
-	Xfreq        types.Object  `tfsdk:"xfreq"`
+	IP             types.String  `tfsdk:"ip"`
+	DevicePassword types.String  `tfsdk:"device_password"`
+	ID             types.Int64   `tfsdk:"id"`
+	Name           types.String  `tfsdk:"name"`
+	Type           types.String  `tfsdk:"type"`
+	Enable         types.Bool    `tfsdk:"enable"`
+	Invert         types.Bool    `tfsdk:"invert"`
+	FactoryReset   types.Bool    `tfsdk:"factory_reset"`
+	ReportThr      types.Float64 `tfsdk:"report_thr"`
+	Range          types.Float64 `tfsdk:"range"`
+	Xpercent       types.Object  `tfsdk:"xpercent"`
+	CountRepThr    types.Float64 `tfsdk:"count_rep_thr"`
+	FreqWindow     types.Float64 `tfsdk:"freq_window"`
+	FreqRepThr     types.Float64 `tfsdk:"freq_rep_thr"`
+	Xcounts        types.Object  `tfsdk:"xcounts"`
+	Xfreq          types.Object  `tfsdk:"xfreq"`
 }
 
 var inputConfigXpercentAttrTypes = map[string]attr.Type{
@@ -86,11 +89,24 @@ func (r *inputConfigResource) Metadata(_ context.Context, req resource.MetadataR
 	resp.TypeName = req.ProviderTypeName + "_input_config"
 }
 
+func (r *inputConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *inputConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Input component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Input component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -217,9 +233,8 @@ func (r *inputConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 }
 
 func (r *inputConfigResource) get(ctx context.Context, m *inputConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.InputGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -435,9 +450,8 @@ func (r *inputConfigResource) apply(ctx context.Context, plan inputConfigResourc
 			cfg.Xfreq.Unit = &v
 		}
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.InputSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var _ provider.Provider = &ShellyProvider{}
@@ -21,6 +22,7 @@ type ShellyProvider struct {
 
 // ShellyProviderModel describes the provider data model.
 type ShellyProviderModel struct {
+	Password types.String `tfsdk:"password"`
 }
 
 func (p *ShellyProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -31,7 +33,13 @@ func (p *ShellyProvider) Metadata(ctx context.Context, req provider.MetadataRequ
 func (p *ShellyProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "The Shelly provider allows management and configuration of Shelly Gen2 devices via their local API.",
-		Attributes:          map[string]schema.Attribute{},
+		Attributes: map[string]schema.Attribute{
+			"password": schema.StringAttribute{
+				Optional:            true,
+				Sensitive:           true,
+				MarkdownDescription: "The password of the Shelly devices (HTTP digest authentication, user `admin`). The provider uses it for each device that has authentication on. You can also set it with the `SHELLY_PASSWORD` environment variable. A resource `device_password` overrides this value.",
+			},
+		},
 	}
 }
 
@@ -43,10 +51,14 @@ func (p *ShellyProvider) Configure(ctx context.Context, req provider.ConfigureRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	pd := &providerData{password: resolvePassword(data.Password)}
+	resp.ResourceData = pd
+	resp.DataSourceData = pd
 }
 
 func (p *ShellyProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return generatedConfigResources()
+	return append(generatedConfigResources(), NewAuthResource)
 }
 
 func (p *ShellyProvider) DataSources(ctx context.Context) []func() datasource.DataSource {

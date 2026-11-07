@@ -22,6 +22,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `mb_server` (Attributes) (see [below for nested schema](#nestedatt--mb_server))
 - `mode` (String) Operating mode for the serial port. Supported modes are listed in the modes attribute.
 - `serial` (Attributes) (see [below for nested schema](#nestedatt--serial))

@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -16,17 +17,19 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &daliConfigResource{}
+	_ resource.ResourceWithConfigure   = &daliConfigResource{}
 	_ resource.ResourceWithImportState = &daliConfigResource{}
 )
 
 func NewDALIConfigResource() resource.Resource { return &daliConfigResource{} }
 
-type daliConfigResource struct{}
+type daliConfigResource struct {
+	provider *providerData
+}
 
 type daliConfigScanModel struct {
 	CgCount   types.Float64 `tfsdk:"cg_count"`
@@ -34,10 +37,11 @@ type daliConfigScanModel struct {
 }
 
 type daliConfigResourceModel struct {
-	IP      types.String  `tfsdk:"ip"`
-	CgCount types.Float64 `tfsdk:"cg_count"`
-	Scan    types.Object  `tfsdk:"scan"`
-	Errors  types.List    `tfsdk:"errors"`
+	IP             types.String  `tfsdk:"ip"`
+	DevicePassword types.String  `tfsdk:"device_password"`
+	CgCount        types.Float64 `tfsdk:"cg_count"`
+	Scan           types.Object  `tfsdk:"scan"`
+	Errors         types.List    `tfsdk:"errors"`
 }
 
 var daliConfigScanAttrTypes = map[string]attr.Type{
@@ -49,10 +53,23 @@ func (r *daliConfigResource) Metadata(_ context.Context, req resource.MetadataRe
 	resp.TypeName = req.ProviderTypeName + "_dali_config"
 }
 
+func (r *daliConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *daliConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"cg_count": schema.Float64Attribute{
 				Optional:            true,
 				Computed:            true,
@@ -90,9 +107,8 @@ func (r *daliConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 }
 
 func (r *daliConfigResource) get(ctx context.Context, m *daliConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.DALIGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -170,9 +186,8 @@ func (r *daliConfigResource) apply(ctx context.Context, plan daliConfigResourceM
 		diags.Append(plan.Errors.ElementsAs(ctx, &v, false)...)
 		cfg.Errors = v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.DALISetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

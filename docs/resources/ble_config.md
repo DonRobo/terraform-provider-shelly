@@ -21,6 +21,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `rpc` (Attributes) (see [below for nested schema](#nestedatt--rpc))
 
 <a id="nestedatt--rpc"></a>

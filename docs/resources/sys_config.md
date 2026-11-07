@@ -31,6 +31,7 @@ resource "shelly_sys_config" "example" {
 - `cfg_rev` (Number) Configuration revision. This number will be incremented for every configuration change of a device component. If the new config value is the same as the old one there will be no change of this property. Can not be modified explicitly by a call to Sys.SetConfig
 - `debug` (Attributes) (see [below for nested schema](#nestedatt--debug))
 - `device` (Attributes) (see [below for nested schema](#nestedatt--device))
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `location` (Attributes) (see [below for nested schema](#nestedatt--location))
 - `rpc_udp` (Attributes) (see [below for nested schema](#nestedatt--rpc_udp))
 - `sntp` (Attributes) (see [below for nested schema](#nestedatt--sntp))

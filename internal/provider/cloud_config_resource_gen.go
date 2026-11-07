@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -13,32 +14,48 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &cloudConfigResource{}
+	_ resource.ResourceWithConfigure   = &cloudConfigResource{}
 	_ resource.ResourceWithImportState = &cloudConfigResource{}
 )
 
 func NewCloudConfigResource() resource.Resource { return &cloudConfigResource{} }
 
-type cloudConfigResource struct{}
+type cloudConfigResource struct {
+	provider *providerData
+}
 
 type cloudConfigResourceModel struct {
-	IP     types.String `tfsdk:"ip"`
-	Enable types.Bool   `tfsdk:"enable"`
-	Server types.String `tfsdk:"server"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	Enable         types.Bool   `tfsdk:"enable"`
+	Server         types.String `tfsdk:"server"`
 }
 
 func (r *cloudConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_cloud_config"
 }
 
+func (r *cloudConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *cloudConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"enable": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -56,9 +73,8 @@ func (r *cloudConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 }
 
 func (r *cloudConfigResource) get(ctx context.Context, m *cloudConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.CloudGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -99,9 +115,8 @@ func (r *cloudConfigResource) apply(ctx context.Context, plan cloudConfigResourc
 		v := plan.Server.ValueString()
 		cfg.Server = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.CloudSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

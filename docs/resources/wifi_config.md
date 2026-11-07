@@ -22,6 +22,7 @@ description: |-
 ### Optional
 
 - `ap` (Attributes) (see [below for nested schema](#nestedatt--ap))
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `roam` (Attributes) (see [below for nested schema](#nestedatt--roam))
 - `sta` (Attributes) (see [below for nested schema](#nestedatt--sta))
 

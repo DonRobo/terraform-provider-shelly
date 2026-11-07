@@ -23,6 +23,7 @@ description: |-
 ### Optional
 
 - `alarms` (Attributes) (see [below for nested schema](#nestedatt--alarms))
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `name` (String) Name of the PM1 instance
 - `reverse` (Boolean) Reverse measurement direction of active power and energy for the PM1 component. setting the reverse option requires restart
 

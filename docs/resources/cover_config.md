@@ -23,6 +23,7 @@ description: |-
 ### Optional
 
 - `current_limit` (Number) Amperes, a limit that must be exceeded to trigger an overcurrent error
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `in_locked` (Boolean) If True, all changes to physical inputs are ignored, regardless of mode.
 - `in_mode` (String) One of single, dual or detached, only present if there is at least one input associated with the Cover instance: single, dual, detached.
 - `initial_state` (String) Defines Cover target state on power-on, one of open (Cover will fully open), closed (Cover will fully close) or stopped (Cover will not change its position)

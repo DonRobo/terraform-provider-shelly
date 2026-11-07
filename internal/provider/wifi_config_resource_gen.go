@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -19,17 +20,19 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &wifiConfigResource{}
+	_ resource.ResourceWithConfigure   = &wifiConfigResource{}
 	_ resource.ResourceWithImportState = &wifiConfigResource{}
 )
 
 func NewWifiConfigResource() resource.Resource { return &wifiConfigResource{} }
 
-type wifiConfigResource struct{}
+type wifiConfigResource struct {
+	provider *providerData
+}
 
 type wifiConfigAPRangeExtenderModel struct {
 	Enable types.Bool `tfsdk:"enable"`
@@ -61,10 +64,11 @@ type wifiConfigRoamModel struct {
 }
 
 type wifiConfigResourceModel struct {
-	IP   types.String `tfsdk:"ip"`
-	AP   types.Object `tfsdk:"ap"`
-	Sta  types.Object `tfsdk:"sta"`
-	Roam types.Object `tfsdk:"roam"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	AP             types.Object `tfsdk:"ap"`
+	Sta            types.Object `tfsdk:"sta"`
+	Roam           types.Object `tfsdk:"roam"`
 }
 
 var wifiConfigAPRangeExtenderAttrTypes = map[string]attr.Type{
@@ -100,10 +104,23 @@ func (r *wifiConfigResource) Metadata(_ context.Context, req resource.MetadataRe
 	resp.TypeName = req.ProviderTypeName + "_wifi_config"
 }
 
+func (r *wifiConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *wifiConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"ap": schema.SingleNestedAttribute{
 				Optional:      true,
 				Computed:      true,
@@ -234,9 +251,8 @@ func (r *wifiConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 }
 
 func (r *wifiConfigResource) get(ctx context.Context, m *wifiConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.WifiGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -467,9 +483,8 @@ func (r *wifiConfigResource) apply(ctx context.Context, plan wifiConfigResourceM
 			cfg.Roam.Interval = &v
 		}
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.WifiSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

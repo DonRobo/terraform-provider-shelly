@@ -25,6 +25,7 @@ description: |-
 - `alarms` (Attributes) (see [below for nested schema](#nestedatt--alarms))
 - `blink_mode_selector` (String) Select the electrical quantity that drives the LED. Range of values: active_energy, apparent_energy
 - `ct_type` (String) Select the type of Shelly current transformer attached to the device.
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `monitor_phase_sequence` (Boolean) Set this to show phase_sequence error in GetStatus if three-phase power system is used and the wires are not connected correctly to the device.
 - `name` (String) Name of the energy meter instance
 - `phase_selector` (String) Select witch phase controls the LED. Range of values: a, b, c, all

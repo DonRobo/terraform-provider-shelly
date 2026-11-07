@@ -21,6 +21,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `dhcp_end` (String) DHCP range ending IP address for the DHCP server in server mode. Applicable only for server mode. Required if not already set
 - `dhcp_start` (String) DHCP range starting IP address for the DHCP server in server mode. Applicable only for server mode. Required if not already set
 - `enable` (Boolean) true if the connection is enabled, false otherwise

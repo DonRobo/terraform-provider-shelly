@@ -22,6 +22,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `errors` (List of String) Error condition occurred. May contain database_error or ct_type_not_set, (shown if the error is present).
 - `total_act_energy` (Number) Total active energy, Wh
 - `total_act_ret_energy` (Number) Total active returned energy, Wh

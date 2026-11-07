@@ -13,35 +13,51 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &smokeConfigResource{}
+	_ resource.ResourceWithConfigure   = &smokeConfigResource{}
 	_ resource.ResourceWithImportState = &smokeConfigResource{}
 )
 
 func NewSmokeConfigResource() resource.Resource { return &smokeConfigResource{} }
 
-type smokeConfigResource struct{}
+type smokeConfigResource struct {
+	provider *providerData
+}
 
 type smokeConfigResourceModel struct {
-	IP   types.String `tfsdk:"ip"`
-	ID   types.Int64  `tfsdk:"id"`
-	Name types.String `tfsdk:"name"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	ID             types.Int64  `tfsdk:"id"`
+	Name           types.String `tfsdk:"name"`
 }
 
 func (r *smokeConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_smoke_config"
 }
 
+func (r *smokeConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *smokeConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Smoke component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Smoke component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -53,9 +69,8 @@ func (r *smokeConfigResource) Schema(_ context.Context, _ resource.SchemaRequest
 }
 
 func (r *smokeConfigResource) get(ctx context.Context, m *smokeConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.SmokeGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -88,9 +103,8 @@ func (r *smokeConfigResource) apply(ctx context.Context, plan smokeConfigResourc
 		v := plan.Name.ValueString()
 		cfg.Name = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.SmokeSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

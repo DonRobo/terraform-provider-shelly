@@ -21,4 +21,5 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `enable` (Boolean) Set true to enable.
