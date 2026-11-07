@@ -32,7 +32,7 @@ Optional:
 
 - `enable` (Boolean) True if the access point is enabled, false otherwise
 - `is_open` (Boolean) True if the access point is open, false otherwise
-- `pass` (String) Password for the AP network, writeonly. Default is open network, set to null to restore default. optional
+- `pass` (String, Sensitive) Password for the AP network, writeonly. Default is open network, set to null to restore default. optional
 - `range_extender` (Attributes) (see [below for nested schema](#nestedatt--ap--range_extender))
 - `ssid` (String) SSID of the access point (up to 29 symbols). Default is the deviceID, set to null to restore default. optional
 
@@ -66,5 +66,5 @@ Optional:
 - `is_open` (Boolean) True if the network is open, i.e. no password is set, false otherwise, readonly
 - `nameserver` (String) Nameserver to use when ipv4mode is static
 - `netmask` (String) Netmask to use when ipv4mode is static
-- `pass` (String) Password for the SSID, writeonly. Must be provided if you provide ssid
+- `pass` (String, Sensitive) Password for the SSID, writeonly. Must be provided if you provide ssid
 - `ssid` (String) SSID of the network.

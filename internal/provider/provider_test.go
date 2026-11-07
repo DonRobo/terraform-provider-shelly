@@ -63,3 +63,18 @@ func TestSwitchConfigResourceSchema(t *testing.T) {
 	require.Contains(t, reqAttrs, "ip")
 	require.Contains(t, reqAttrs, "id")
 }
+
+func TestWifiConfigPasswordsAreSensitive(t *testing.T) {
+	res := NewWifiConfigResource()
+	var resp resource.SchemaResponse
+	res.Schema(context.Background(), resource.SchemaRequest{}, &resp)
+	require.Empty(t, resp.Diagnostics.Errors())
+
+	for _, block := range []string{"ap", "sta"} {
+		nested, ok := resp.Schema.Attributes[block].(schema.SingleNestedAttribute)
+		require.True(t, ok, block)
+		pass, ok := nested.Attributes["pass"].(schema.StringAttribute)
+		require.True(t, ok, block+".pass")
+		require.True(t, pass.Sensitive, block+".pass must be sensitive")
+	}
+}

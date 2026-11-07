@@ -160,6 +160,17 @@ func readOnly(f *gen.Field) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(f.Description)), "read-only")
 }
 
+// sensitive reports whether a field holds a secret: a password key, or a field
+// the Shelly docs call write-only. Terraform redacts such values in plan output.
+func sensitive(seg string, f *gen.Field) bool {
+	switch strings.ToLower(seg) {
+	case "pass", "password":
+		return true
+	}
+	desc := strings.ToLower(f.Description)
+	return strings.Contains(desc, "writeonly") || strings.Contains(desc, "write-only")
+}
+
 // modelFieldType is the Terraform model field type for a leaf.
 func modelFieldType(f *gen.Field) string {
 	if f.Type == "array" {
@@ -395,6 +406,9 @@ func emitSchemaAttrs(b *strings.Builder, n *tnode, imp *imports) {
 		availability := "Optional: true,\nComputed: true,\n"
 		if ro {
 			availability = "Computed: true,\n"
+		}
+		if sensitive(seg, f) {
+			availability += "Sensitive: true,\n"
 		}
 
 		if f.Type == "array" {
