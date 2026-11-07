@@ -21,4 +21,5 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `idle_brightness` (Number) Brightness of the device's screen while idle, in percent (0-100). Not documented by Shelly; sourced via device introspection.

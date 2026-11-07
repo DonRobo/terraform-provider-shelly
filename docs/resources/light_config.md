@@ -29,6 +29,7 @@ description: |-
 - `button_fade_rate` (Number) Controls how quickly the output level changes while a button is held down for dimming (if applicable). Default value 3. Range [1,5] where 5 is fastest, 1 is slowest
 - `button_presets` (Attributes) (see [below for nested schema](#nestedatt--button_presets))
 - `current_limit` (Number) Limit (in Amperes) over which overcurrent condition occurs (shown if applicable). For PlusRGBWPM shown if device is calibrated.
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `gamma` (Number) Gamma correction (dimensionless) - adjusts light intensity for perceptual linearity. Range 0.4 to 4.0, default 1.0 (if applicable)
 - `in_mode` (String) Mode of the associated input. Range of values: follow, flip, activate, detached, dim (if applicable), dual_dim (if applicable)
 - `initial_state` (String) Output state to set on power_on. Range of values: off, on, restore_last, toggle

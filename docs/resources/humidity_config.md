@@ -22,6 +22,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `name` (String) Name of the Humidity instance. name length should not exceed 64 chars
 - `offset` (Number) Humidity offset in %. Value is applied to measured humidity. Accepted range is device-specific, default [-50.0..50.0]% unless specified otherwise
 - `report_thr` (Number) Humidity report threshold in %. Accepted range is device-specific, default [1.0..20.0]% unless specified otherwise

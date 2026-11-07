@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -17,17 +18,19 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &presenceConfigResource{}
+	_ resource.ResourceWithConfigure   = &presenceConfigResource{}
 	_ resource.ResourceWithImportState = &presenceConfigResource{}
 )
 
 func NewPresenceConfigResource() resource.Resource { return &presenceConfigResource{} }
 
-type presenceConfigResource struct{}
+type presenceConfigResource struct {
+	provider *providerData
+}
 
 type presenceConfigSensorStateModel struct {
 	DetActThr    types.Float64 `tfsdk:"det_act_thr"`
@@ -66,14 +69,15 @@ type presenceConfigLedsModel struct {
 }
 
 type presenceConfigResourceModel struct {
-	IP       types.String  `tfsdk:"ip"`
-	Enable   types.Bool    `tfsdk:"enable"`
-	Zmin     types.Float64 `tfsdk:"zmin"`
-	Zmax     types.Float64 `tfsdk:"zmax"`
-	Sensor   types.Object  `tfsdk:"sensor"`
-	UI       types.Object  `tfsdk:"ui"`
-	Leds     types.Object  `tfsdk:"leds"`
-	MainZone types.String  `tfsdk:"main_zone"`
+	IP             types.String  `tfsdk:"ip"`
+	DevicePassword types.String  `tfsdk:"device_password"`
+	Enable         types.Bool    `tfsdk:"enable"`
+	Zmin           types.Float64 `tfsdk:"zmin"`
+	Zmax           types.Float64 `tfsdk:"zmax"`
+	Sensor         types.Object  `tfsdk:"sensor"`
+	UI             types.Object  `tfsdk:"ui"`
+	Leds           types.Object  `tfsdk:"leds"`
+	MainZone       types.String  `tfsdk:"main_zone"`
 }
 
 var presenceConfigSensorStateAttrTypes = map[string]attr.Type{
@@ -116,10 +120,23 @@ func (r *presenceConfigResource) Metadata(_ context.Context, req resource.Metada
 	resp.TypeName = req.ProviderTypeName + "_presence_config"
 }
 
+func (r *presenceConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *presenceConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"enable": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -298,9 +315,8 @@ func (r *presenceConfigResource) Schema(_ context.Context, _ resource.SchemaRequ
 }
 
 func (r *presenceConfigResource) get(ctx context.Context, m *presenceConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.PresenceGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -610,9 +626,8 @@ func (r *presenceConfigResource) apply(ctx context.Context, plan presenceConfigR
 		v := plan.MainZone.ValueString()
 		cfg.MainZone = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.PresenceSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

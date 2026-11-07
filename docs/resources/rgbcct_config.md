@@ -26,6 +26,7 @@ description: |-
 - `auto_off_delay` (Number) Seconds to pass until the component is switched back off
 - `auto_on` (Boolean) True if the "Automatic ON" function is enabled, false otherwise
 - `auto_on_delay` (Number) Seconds to pass until the component is switched back on
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `initial_state` (String) Output state to set on power_on. Range of values: off, on, restore_last
 - `min_brightness_on_toggle` (Number) Brightness level (in percent) applied when there is a toggle and current brightness is lower than min_brightness_on_toggle.
 - `name` (String) Name of the RGBCCT instance

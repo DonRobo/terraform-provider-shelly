@@ -2,18 +2,19 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	shelly "github.com/DonRobo/shelly-go"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ datasource.DataSource = &ShellyDeviceDataSource{}
 
 type ShellyDeviceDataSource struct {
+	provider *providerData
 }
 
 type ShellyDeviceModel struct {
@@ -51,6 +52,15 @@ func (d *ShellyDeviceDataSource) Schema(ctx context.Context, req datasource.Sche
 }
 
 func (d *ShellyDeviceDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	d.provider = pd
 }
 
 func (d *ShellyDeviceDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -62,9 +72,8 @@ func (d *ShellyDeviceDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	client := resty.New()
+	client := d.provider.client(data.IP.ValueString(), types.StringNull())
 	defer client.Close()
-	client.SetBaseURL("http://" + data.IP.ValueString())
 
 	info, _, err := (&shelly.ShellyGetDeviceInfoRequest{}).Do(client)
 	if err != nil {

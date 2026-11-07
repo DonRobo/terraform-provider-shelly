@@ -17,29 +17,32 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &devicepowerConfigResource{}
+	_ resource.ResourceWithConfigure   = &devicepowerConfigResource{}
 	_ resource.ResourceWithImportState = &devicepowerConfigResource{}
 )
 
 func NewDevicePowerConfigResource() resource.Resource { return &devicepowerConfigResource{} }
 
-type devicepowerConfigResource struct{}
+type devicepowerConfigResource struct {
+	provider *providerData
+}
 
 type devicepowerConfigBatteryModel struct {
 	Percent types.Float64 `tfsdk:"percent"`
 }
 
 type devicepowerConfigResourceModel struct {
-	IP      types.String `tfsdk:"ip"`
-	ID      types.Int64  `tfsdk:"id"`
-	Battery types.Object `tfsdk:"battery"`
-	Errors  types.List   `tfsdk:"errors"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	ID             types.Int64  `tfsdk:"id"`
+	Battery        types.Object `tfsdk:"battery"`
+	Errors         types.List   `tfsdk:"errors"`
 }
 
 var devicepowerConfigBatteryAttrTypes = map[string]attr.Type{
@@ -50,11 +53,24 @@ func (r *devicepowerConfigResource) Metadata(_ context.Context, req resource.Met
 	resp.TypeName = req.ProviderTypeName + "_devicepower_config"
 }
 
+func (r *devicepowerConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *devicepowerConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the DevicePower component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the DevicePower component instance."},
 			"battery": schema.SingleNestedAttribute{
 				Optional:      true,
 				Computed:      true,
@@ -80,9 +96,8 @@ func (r *devicepowerConfigResource) Schema(_ context.Context, _ resource.SchemaR
 }
 
 func (r *devicepowerConfigResource) get(ctx context.Context, m *devicepowerConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.DevicePowerGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -143,9 +158,8 @@ func (r *devicepowerConfigResource) apply(ctx context.Context, plan devicepowerC
 		diags.Append(plan.Errors.ElementsAs(ctx, &v, false)...)
 		cfg.Errors = v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.DevicePowerSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

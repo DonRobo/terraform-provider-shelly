@@ -18,19 +18,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &em1ConfigResource{}
+	_ resource.ResourceWithConfigure   = &em1ConfigResource{}
 	_ resource.ResourceWithImportState = &em1ConfigResource{}
 )
 
 func NewEM1ConfigResource() resource.Resource { return &em1ConfigResource{} }
 
-type em1ConfigResource struct{}
+type em1ConfigResource struct {
+	provider *providerData
+}
 
 type em1ConfigAlarmsModel struct {
 	Voltage types.List `tfsdk:"voltage"`
@@ -39,12 +41,13 @@ type em1ConfigAlarmsModel struct {
 }
 
 type em1ConfigResourceModel struct {
-	IP      types.String `tfsdk:"ip"`
-	ID      types.Int64  `tfsdk:"id"`
-	Name    types.String `tfsdk:"name"`
-	Reverse types.Bool   `tfsdk:"reverse"`
-	CtType  types.String `tfsdk:"ct_type"`
-	Alarms  types.Object `tfsdk:"alarms"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	ID             types.Int64  `tfsdk:"id"`
+	Name           types.String `tfsdk:"name"`
+	Reverse        types.Bool   `tfsdk:"reverse"`
+	CtType         types.String `tfsdk:"ct_type"`
+	Alarms         types.Object `tfsdk:"alarms"`
 }
 
 var em1ConfigAlarmsAttrTypes = map[string]attr.Type{
@@ -57,11 +60,24 @@ func (r *em1ConfigResource) Metadata(_ context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_em1_config"
 }
 
+func (r *em1ConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *em1ConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the EM1 component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the EM1 component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -113,9 +129,8 @@ func (r *em1ConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 }
 
 func (r *em1ConfigResource) get(ctx context.Context, m *em1ConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.EM1GetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -218,9 +233,8 @@ func (r *em1ConfigResource) apply(ctx context.Context, plan em1ConfigResourceMod
 			cfg.Alarms.Power = v
 		}
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.EM1SetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

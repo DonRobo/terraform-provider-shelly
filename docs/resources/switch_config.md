@@ -39,6 +39,7 @@ resource "shelly_switch_config" "example" {
 - `autorecover_voltage_errors` (Boolean) True if switch output state should be restored after over/undervoltage error is cleared, false otherwise (shown if applicable)
 - `counts` (Attributes) (see [below for nested schema](#nestedatt--counts))
 - `current_limit` (Number) Number, limit (in Amperes) over which overcurrent condition occurs (shown if applicable)
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `in_locked` (Boolean) If True, all changes to physical inputs are ignored, regardless of mode.
 - `in_mode` (String) Mode of the associated input. Range of values: momentary, follow, flip, detached, cycle (if applicable), activate (if applicable)
 - `initial_state` (String) Output state to set on power_on. Range of values: off, on, restore_last, match_input

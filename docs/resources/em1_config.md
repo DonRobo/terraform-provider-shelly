@@ -24,6 +24,7 @@ description: |-
 
 - `alarms` (Attributes) (see [below for nested schema](#nestedatt--alarms))
 - `ct_type` (String) Select the type of Shelly current transformer attached to the device.
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `name` (String) Name of the EM1 instance
 - `reverse` (Boolean) Reverse CT measurement direction of active power and energy for the EM1 component. setting the reverse option requires restart
 

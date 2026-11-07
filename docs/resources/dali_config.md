@@ -22,6 +22,7 @@ description: |-
 ### Optional
 
 - `cg_count` (Number) Number of scanned control gears (null if scan has never been executed)
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `errors` (List of String) Shown only if at least one error is present. May contain control_gear_missing, driver
 - `scan` (Attributes) (see [below for nested schema](#nestedatt--scan))
 

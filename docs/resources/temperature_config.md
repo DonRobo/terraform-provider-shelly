@@ -22,6 +22,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `name` (String) Name of the Temperature instance. name length should not exceed 64 chars
 - `offset_c` (Number) Offset in Celsius to be applied to the measured temperature. Accepted range is device-specific, default [-50.0 .. 50.0] unless specified otherwise
 - `report_thr_c` (Number) Temperature report threshold in Celsius. Accepted range is device-specific, default [0.5..5.0]C unless specified otherwise

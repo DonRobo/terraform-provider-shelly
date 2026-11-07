@@ -21,6 +21,7 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `enable` (Boolean) Enable or disable tracking sensor
 - `leds` (Attributes) (see [below for nested schema](#nestedatt--leds))
 - `main_zone` (String) Default presence zone key. (readonly)

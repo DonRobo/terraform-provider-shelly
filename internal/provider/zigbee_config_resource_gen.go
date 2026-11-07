@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -12,31 +13,47 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &zigbeeConfigResource{}
+	_ resource.ResourceWithConfigure   = &zigbeeConfigResource{}
 	_ resource.ResourceWithImportState = &zigbeeConfigResource{}
 )
 
 func NewZigbeeConfigResource() resource.Resource { return &zigbeeConfigResource{} }
 
-type zigbeeConfigResource struct{}
+type zigbeeConfigResource struct {
+	provider *providerData
+}
 
 type zigbeeConfigResourceModel struct {
-	IP     types.String `tfsdk:"ip"`
-	Enable types.Bool   `tfsdk:"enable"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	Enable         types.Bool   `tfsdk:"enable"`
 }
 
 func (r *zigbeeConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_zigbee_config"
 }
 
+func (r *zigbeeConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *zigbeeConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"enable": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -48,9 +65,8 @@ func (r *zigbeeConfigResource) Schema(_ context.Context, _ resource.SchemaReques
 }
 
 func (r *zigbeeConfigResource) get(ctx context.Context, m *zigbeeConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.ZigbeeGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -82,9 +98,8 @@ func (r *zigbeeConfigResource) apply(ctx context.Context, plan zigbeeConfigResou
 		v := plan.Enable.ValueBool()
 		cfg.Enable = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.ZigbeeSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

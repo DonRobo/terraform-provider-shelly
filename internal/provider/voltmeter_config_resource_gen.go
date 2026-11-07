@@ -17,19 +17,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &voltmeterConfigResource{}
+	_ resource.ResourceWithConfigure   = &voltmeterConfigResource{}
 	_ resource.ResourceWithImportState = &voltmeterConfigResource{}
 )
 
 func NewVoltmeterConfigResource() resource.Resource { return &voltmeterConfigResource{} }
 
-type voltmeterConfigResource struct{}
+type voltmeterConfigResource struct {
+	provider *providerData
+}
 
 type voltmeterConfigXvoltageModel struct {
 	Expr types.String `tfsdk:"expr"`
@@ -37,12 +39,13 @@ type voltmeterConfigXvoltageModel struct {
 }
 
 type voltmeterConfigResourceModel struct {
-	IP        types.String  `tfsdk:"ip"`
-	ID        types.Int64   `tfsdk:"id"`
-	Name      types.String  `tfsdk:"name"`
-	ReportThr types.Float64 `tfsdk:"report_thr"`
-	Range     types.Float64 `tfsdk:"range"`
-	Xvoltage  types.Object  `tfsdk:"xvoltage"`
+	IP             types.String  `tfsdk:"ip"`
+	DevicePassword types.String  `tfsdk:"device_password"`
+	ID             types.Int64   `tfsdk:"id"`
+	Name           types.String  `tfsdk:"name"`
+	ReportThr      types.Float64 `tfsdk:"report_thr"`
+	Range          types.Float64 `tfsdk:"range"`
+	Xvoltage       types.Object  `tfsdk:"xvoltage"`
 }
 
 var voltmeterConfigXvoltageAttrTypes = map[string]attr.Type{
@@ -54,11 +57,24 @@ func (r *voltmeterConfigResource) Metadata(_ context.Context, req resource.Metad
 	resp.TypeName = req.ProviderTypeName + "_voltmeter_config"
 }
 
+func (r *voltmeterConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *voltmeterConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Voltmeter component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Voltmeter component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -101,9 +117,8 @@ func (r *voltmeterConfigResource) Schema(_ context.Context, _ resource.SchemaReq
 }
 
 func (r *voltmeterConfigResource) get(ctx context.Context, m *voltmeterConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.VoltmeterGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -188,9 +203,8 @@ func (r *voltmeterConfigResource) apply(ctx context.Context, plan voltmeterConfi
 			cfg.Xvoltage.Unit = &v
 		}
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.VoltmeterSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

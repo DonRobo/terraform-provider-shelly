@@ -23,6 +23,7 @@ description: |-
 ### Optional
 
 - `absence_delay` (Number) Active period of absence before trigger (in seconds)
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `enable` (Boolean) Activate or deactivate zone
 - `name` (String) Name of the component instance
 - `presence_delay` (Number) Active period of presence before trigger (in seconds)

@@ -29,6 +29,7 @@ description: |-
 - `button_fade_rate` (Number) Controls how quickly the output level changes while a button is held down for dimming (if applicable). Default value 3. Range [1,5] where 5 is fastest, 1 is slowest
 - `button_presets` (Attributes) (see [below for nested schema](#nestedatt--button_presets))
 - `current_limit` (Number) Limit (in Amperes) over which overcurrent condition occurs (shown if applicable). For specific devices applies for color channels, not CCT component
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `initial_state` (String) Output state to set on power_on. Range of values: off, on, restore_last
 - `min_brightness_on_toggle` (Number) Brightness level (in percent) applied when there is a toggle and current brightness is lower than min_brightness_on_toggle.
 - `name` (String) Name of the CCT instance

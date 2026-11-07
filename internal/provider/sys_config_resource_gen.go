@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -19,17 +20,19 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &sysConfigResource{}
+	_ resource.ResourceWithConfigure   = &sysConfigResource{}
 	_ resource.ResourceWithImportState = &sysConfigResource{}
 )
 
 func NewSysConfigResource() resource.Resource { return &sysConfigResource{} }
 
-type sysConfigResource struct{}
+type sysConfigResource struct {
+	provider *providerData
+}
 
 type sysConfigDeviceModel struct {
 	Name                     types.String `tfsdk:"name"`
@@ -83,13 +86,14 @@ type sysConfigSntpModel struct {
 }
 
 type sysConfigResourceModel struct {
-	IP       types.String  `tfsdk:"ip"`
-	Device   types.Object  `tfsdk:"device"`
-	Location types.Object  `tfsdk:"location"`
-	Debug    types.Object  `tfsdk:"debug"`
-	RPCUdp   types.Object  `tfsdk:"rpc_udp"`
-	Sntp     types.Object  `tfsdk:"sntp"`
-	CfgRev   types.Float64 `tfsdk:"cfg_rev"`
+	IP             types.String  `tfsdk:"ip"`
+	DevicePassword types.String  `tfsdk:"device_password"`
+	Device         types.Object  `tfsdk:"device"`
+	Location       types.Object  `tfsdk:"location"`
+	Debug          types.Object  `tfsdk:"debug"`
+	RPCUdp         types.Object  `tfsdk:"rpc_udp"`
+	Sntp           types.Object  `tfsdk:"sntp"`
+	CfgRev         types.Float64 `tfsdk:"cfg_rev"`
 }
 
 var sysConfigDeviceAttrTypes = map[string]attr.Type{
@@ -147,10 +151,23 @@ func (r *sysConfigResource) Metadata(_ context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_sys_config"
 }
 
+func (r *sysConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *sysConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"device": schema.SingleNestedAttribute{
 				Optional:      true,
 				Computed:      true,
@@ -344,9 +361,8 @@ func (r *sysConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 }
 
 func (r *sysConfigResource) get(ctx context.Context, m *sysConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.SysGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -694,9 +710,8 @@ func (r *sysConfigResource) apply(ctx context.Context, plan sysConfigResourceMod
 		v := plan.CfgRev.ValueFloat64()
 		cfg.CfgRev = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.SysSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

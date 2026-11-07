@@ -32,6 +32,7 @@ resource "shelly_input_config" "example" {
 ### Optional
 
 - `count_rep_thr` (Number) (only for type count) Counts report threshold in number of pulses. Accepted range [1 - 2147483647]
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `enable` (Boolean) Global enable flag. When disabled, the input instance doesn't emit any events and reports status properties as null. Applies for all input types
 - `factory_reset` (Boolean) (only for type switch, button) True if input-triggered factory reset option is enabled, false otherwise (shown if applicable)
 - `freq_rep_thr` (Number) (only for type count) Frequency report threshold in percent. Accepted range [0 - 10000]

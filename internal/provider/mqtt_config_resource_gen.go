@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -15,40 +16,56 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &mqttConfigResource{}
+	_ resource.ResourceWithConfigure   = &mqttConfigResource{}
 	_ resource.ResourceWithImportState = &mqttConfigResource{}
 )
 
 func NewMQTTConfigResource() resource.Resource { return &mqttConfigResource{} }
 
-type mqttConfigResource struct{}
+type mqttConfigResource struct {
+	provider *providerData
+}
 
 type mqttConfigResourceModel struct {
-	IP            types.String `tfsdk:"ip"`
-	Enable        types.Bool   `tfsdk:"enable"`
-	Server        types.String `tfsdk:"server"`
-	ClientID      types.String `tfsdk:"client_id"`
-	User          types.String `tfsdk:"user"`
-	SSLCA         types.String `tfsdk:"ssl_ca"`
-	TopicPrefix   types.String `tfsdk:"topic_prefix"`
-	RPCNtf        types.Bool   `tfsdk:"rpc_ntf"`
-	StatusNtf     types.Bool   `tfsdk:"status_ntf"`
-	UseClientCert types.Bool   `tfsdk:"use_client_cert"`
-	EnableControl types.Bool   `tfsdk:"enable_control"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	Enable         types.Bool   `tfsdk:"enable"`
+	Server         types.String `tfsdk:"server"`
+	ClientID       types.String `tfsdk:"client_id"`
+	User           types.String `tfsdk:"user"`
+	SSLCA          types.String `tfsdk:"ssl_ca"`
+	TopicPrefix    types.String `tfsdk:"topic_prefix"`
+	RPCNtf         types.Bool   `tfsdk:"rpc_ntf"`
+	StatusNtf      types.Bool   `tfsdk:"status_ntf"`
+	UseClientCert  types.Bool   `tfsdk:"use_client_cert"`
+	EnableControl  types.Bool   `tfsdk:"enable_control"`
 }
 
 func (r *mqttConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_mqtt_config"
 }
 
+func (r *mqttConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *mqttConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"enable": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -115,9 +132,8 @@ func (r *mqttConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 }
 
 func (r *mqttConfigResource) get(ctx context.Context, m *mqttConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.MQTTGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -230,9 +246,8 @@ func (r *mqttConfigResource) apply(ctx context.Context, plan mqttConfigResourceM
 		v := plan.EnableControl.ValueBool()
 		cfg.EnableControl = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.MQTTSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

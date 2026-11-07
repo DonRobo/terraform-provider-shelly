@@ -16,37 +16,53 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &humidityConfigResource{}
+	_ resource.ResourceWithConfigure   = &humidityConfigResource{}
 	_ resource.ResourceWithImportState = &humidityConfigResource{}
 )
 
 func NewHumidityConfigResource() resource.Resource { return &humidityConfigResource{} }
 
-type humidityConfigResource struct{}
+type humidityConfigResource struct {
+	provider *providerData
+}
 
 type humidityConfigResourceModel struct {
-	IP        types.String  `tfsdk:"ip"`
-	ID        types.Int64   `tfsdk:"id"`
-	Name      types.String  `tfsdk:"name"`
-	ReportThr types.Float64 `tfsdk:"report_thr"`
-	Offset    types.Float64 `tfsdk:"offset"`
+	IP             types.String  `tfsdk:"ip"`
+	DevicePassword types.String  `tfsdk:"device_password"`
+	ID             types.Int64   `tfsdk:"id"`
+	Name           types.String  `tfsdk:"name"`
+	ReportThr      types.Float64 `tfsdk:"report_thr"`
+	Offset         types.Float64 `tfsdk:"offset"`
 }
 
 func (r *humidityConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_humidity_config"
 }
 
+func (r *humidityConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *humidityConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Humidity component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Humidity component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -72,9 +88,8 @@ func (r *humidityConfigResource) Schema(_ context.Context, _ resource.SchemaRequ
 }
 
 func (r *humidityConfigResource) get(ctx context.Context, m *humidityConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.HumidityGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -125,9 +140,8 @@ func (r *humidityConfigResource) apply(ctx context.Context, plan humidityConfigR
 		v := plan.Offset.ValueFloat64()
 		cfg.Offset = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.HumiditySetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

@@ -23,6 +23,7 @@ description: |-
 ### Optional
 
 - `battery` (Attributes) (see [below for nested schema](#nestedatt--battery))
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `errors` (List of String) Whether external power source is connected
 
 <a id="nestedatt--battery"></a>

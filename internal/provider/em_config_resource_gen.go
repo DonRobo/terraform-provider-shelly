@@ -20,19 +20,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &emConfigResource{}
+	_ resource.ResourceWithConfigure   = &emConfigResource{}
 	_ resource.ResourceWithImportState = &emConfigResource{}
 )
 
 func NewEMConfigResource() resource.Resource { return &emConfigResource{} }
 
-type emConfigResource struct{}
+type emConfigResource struct {
+	provider *providerData
+}
 
 type emConfigReverseModel struct {
 	A types.Bool `tfsdk:"a"`
@@ -66,6 +68,7 @@ type emConfigAlarmsModel struct {
 
 type emConfigResourceModel struct {
 	IP                   types.String `tfsdk:"ip"`
+	DevicePassword       types.String `tfsdk:"device_password"`
 	ID                   types.Int64  `tfsdk:"id"`
 	Name                 types.String `tfsdk:"name"`
 	BlinkModeSelector    types.String `tfsdk:"blink_mode_selector"`
@@ -110,11 +113,24 @@ func (r *emConfigResource) Metadata(_ context.Context, req resource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_em_config"
 }
 
+func (r *emConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *emConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the EM component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the EM component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -268,9 +284,8 @@ func (r *emConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 }
 
 func (r *emConfigResource) get(ctx context.Context, m *emConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.EMGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -554,9 +569,8 @@ func (r *emConfigResource) apply(ctx context.Context, plan emConfigResourceModel
 		v := plan.CtType.ValueString()
 		cfg.CtType = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.EMSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

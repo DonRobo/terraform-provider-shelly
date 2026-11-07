@@ -22,4 +22,5 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `name` (String) Name of the Smoke instance. name length should not exceed 64 chars

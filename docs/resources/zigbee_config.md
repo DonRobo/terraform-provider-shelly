@@ -21,4 +21,5 @@ description: |-
 
 ### Optional
 
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `enable` (Boolean) True if Zigbee connectivity is enabled, false otherwise

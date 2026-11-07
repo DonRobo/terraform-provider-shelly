@@ -14,37 +14,53 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &illuminanceConfigResource{}
+	_ resource.ResourceWithConfigure   = &illuminanceConfigResource{}
 	_ resource.ResourceWithImportState = &illuminanceConfigResource{}
 )
 
 func NewIlluminanceConfigResource() resource.Resource { return &illuminanceConfigResource{} }
 
-type illuminanceConfigResource struct{}
+type illuminanceConfigResource struct {
+	provider *providerData
+}
 
 type illuminanceConfigResourceModel struct {
-	IP        types.String  `tfsdk:"ip"`
-	ID        types.Int64   `tfsdk:"id"`
-	Name      types.String  `tfsdk:"name"`
-	DarkThr   types.Float64 `tfsdk:"dark_thr"`
-	BrightThr types.Float64 `tfsdk:"bright_thr"`
+	IP             types.String  `tfsdk:"ip"`
+	DevicePassword types.String  `tfsdk:"device_password"`
+	ID             types.Int64   `tfsdk:"id"`
+	Name           types.String  `tfsdk:"name"`
+	DarkThr        types.Float64 `tfsdk:"dark_thr"`
+	BrightThr      types.Float64 `tfsdk:"bright_thr"`
 }
 
 func (r *illuminanceConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_illuminance_config"
 }
 
+func (r *illuminanceConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *illuminanceConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Illuminance component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the Illuminance component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -68,9 +84,8 @@ func (r *illuminanceConfigResource) Schema(_ context.Context, _ resource.SchemaR
 }
 
 func (r *illuminanceConfigResource) get(ctx context.Context, m *illuminanceConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.IlluminanceGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -121,9 +136,8 @@ func (r *illuminanceConfigResource) apply(ctx context.Context, plan illuminanceC
 		v := plan.BrightThr.ValueFloat64()
 		cfg.BrightThr = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.IlluminanceSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

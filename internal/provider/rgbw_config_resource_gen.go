@@ -22,19 +22,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"resty.dev/v3"
 	"strconv"
 	"strings"
 )
 
 var (
 	_ resource.Resource                = &rgbwConfigResource{}
+	_ resource.ResourceWithConfigure   = &rgbwConfigResource{}
 	_ resource.ResourceWithImportState = &rgbwConfigResource{}
 )
 
 func NewRGBWConfigResource() resource.Resource { return &rgbwConfigResource{} }
 
-type rgbwConfigResource struct{}
+type rgbwConfigResource struct {
+	provider *providerData
+}
 
 type rgbwConfigNightModeModel struct {
 	Enable        types.Bool    `tfsdk:"enable"`
@@ -56,6 +58,7 @@ type rgbwConfigButtonPresetsModel struct {
 
 type rgbwConfigResourceModel struct {
 	IP                    types.String  `tfsdk:"ip"`
+	DevicePassword        types.String  `tfsdk:"device_password"`
 	ID                    types.Int64   `tfsdk:"id"`
 	Name                  types.String  `tfsdk:"name"`
 	InMode                types.String  `tfsdk:"in_mode"`
@@ -96,11 +99,24 @@ func (r *rgbwConfigResource) Metadata(_ context.Context, req resource.MetadataRe
 	resp.TypeName = req.ProviderTypeName + "_rgbw_config"
 }
 
+func (r *rgbwConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *rgbwConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
-			"id": schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the RGBW component instance."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
+			"id":              schema.Int64Attribute{Required: true, MarkdownDescription: "The ID of the RGBW component instance."},
 			"name": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -259,9 +275,8 @@ func (r *rgbwConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 }
 
 func (r *rgbwConfigResource) get(ctx context.Context, m *rgbwConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.RGBWGetConfigRequest{ID: int(m.ID.ValueInt64())}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -531,9 +546,8 @@ func (r *rgbwConfigResource) apply(ctx context.Context, plan rgbwConfigResourceM
 		v := plan.VoltageLimit.ValueFloat64()
 		cfg.VoltageLimit = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.RGBWSetConfigRequest{ID: int(plan.ID.ValueInt64()), Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}

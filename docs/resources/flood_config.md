@@ -23,5 +23,6 @@ description: |-
 ### Optional
 
 - `alarm_mode` (String) Configuration of sound made on alarm. Accepted values are disabled, normal, intense and rain. When cable is unplugged value is null
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `name` (String) Name of the Flood instance. name length should not exceed 64 chars
 - `report_holdoff` (Number) Time waited before reporting flood status. For this period status must be steady. Accepted values are between 0-60 sec with step 5 sec

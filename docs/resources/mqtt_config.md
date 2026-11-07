@@ -22,6 +22,7 @@ description: |-
 ### Optional
 
 - `client_id` (String) Identifies each MQTT client that connects to an MQTT brokers
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `enable` (Boolean) True if MQTT connection is enabled, false otherwise
 - `enable_control` (Boolean) Enable the MQTT control feature. Defalut value: true
 - `rpc_ntf` (Boolean) Enables RPC notifications (NotifyStatus and NotifyEvent) to be published on <device_id|topic_prefix>/events/rpc (<topic_prefix> when a custom prefix is set, <device_id> otherwise). Default value: true.

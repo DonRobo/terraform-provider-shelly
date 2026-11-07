@@ -24,4 +24,5 @@ description: |-
 
 - `bright_thr` (Number) bright threshold in lux. Accepted range is device-specific
 - `dark_thr` (Number) Threshold in lux. Accepted range is device-specific
+- `device_password` (String, Sensitive) The device password. It overrides the provider `password` for this device.
 - `name` (String) Name of the Illuminance instance. name length should not exceed 64 chars

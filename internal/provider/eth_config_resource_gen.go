@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"github.com/DonRobo/shelly-go/components"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -15,38 +16,54 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"resty.dev/v3"
 )
 
 var (
 	_ resource.Resource                = &ethConfigResource{}
+	_ resource.ResourceWithConfigure   = &ethConfigResource{}
 	_ resource.ResourceWithImportState = &ethConfigResource{}
 )
 
 func NewEthConfigResource() resource.Resource { return &ethConfigResource{} }
 
-type ethConfigResource struct{}
+type ethConfigResource struct {
+	provider *providerData
+}
 
 type ethConfigResourceModel struct {
-	IP         types.String `tfsdk:"ip"`
-	Enable     types.Bool   `tfsdk:"enable"`
-	ServerMode types.Bool   `tfsdk:"server_mode"`
-	Ipv4mode   types.String `tfsdk:"ipv4mode"`
-	Netmask    types.String `tfsdk:"netmask"`
-	Gw         types.String `tfsdk:"gw"`
-	Nameserver types.String `tfsdk:"nameserver"`
-	DhcpStart  types.String `tfsdk:"dhcp_start"`
-	DhcpEnd    types.String `tfsdk:"dhcp_end"`
+	IP             types.String `tfsdk:"ip"`
+	DevicePassword types.String `tfsdk:"device_password"`
+	Enable         types.Bool   `tfsdk:"enable"`
+	ServerMode     types.Bool   `tfsdk:"server_mode"`
+	Ipv4mode       types.String `tfsdk:"ipv4mode"`
+	Netmask        types.String `tfsdk:"netmask"`
+	Gw             types.String `tfsdk:"gw"`
+	Nameserver     types.String `tfsdk:"nameserver"`
+	DhcpStart      types.String `tfsdk:"dhcp_start"`
+	DhcpEnd        types.String `tfsdk:"dhcp_end"`
 }
 
 func (r *ethConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_eth_config"
 }
 
+func (r *ethConfigResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	pd, ok := req.ProviderData.(*providerData)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected provider data", fmt.Sprintf("expected *providerData, got %T", req.ProviderData))
+		return
+	}
+	r.provider = pd
+}
+
 func (r *ethConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"ip": schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"ip":              schema.StringAttribute{Required: true, MarkdownDescription: "The IP address of the Shelly device."},
+			"device_password": schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "The device password. It overrides the provider `password` for this device."},
 			"enable": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
@@ -101,9 +118,8 @@ func (r *ethConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 }
 
 func (r *ethConfigResource) get(ctx context.Context, m *ethConfigResourceModel, diags *diag.Diagnostics) {
-	client := resty.New()
+	client := r.provider.client(m.IP.ValueString(), m.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + m.IP.ValueString())
 	got, _, err := (&components.EthGetConfigRequest{}).Do(client)
 	if err != nil {
 		diags.AddError("Failed to read config", err.Error())
@@ -198,9 +214,8 @@ func (r *ethConfigResource) apply(ctx context.Context, plan ethConfigResourceMod
 		v := plan.DhcpEnd.ValueString()
 		cfg.DhcpEnd = &v
 	}
-	client := resty.New()
+	client := r.provider.client(plan.IP.ValueString(), plan.DevicePassword)
 	defer client.Close()
-	client.SetBaseURL("http://" + plan.IP.ValueString())
 	if _, _, err := (&components.EthSetConfigRequest{Config: cfg}).Do(client); err != nil {
 		diags.AddError("Failed to set config", err.Error())
 	}
